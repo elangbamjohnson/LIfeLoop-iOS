@@ -6,14 +6,24 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2300557030A81C97002EEF8D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2300556F30A81C97002EEF8D /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		2300556830A81C96002EEF8D /* LifeLoop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LifeLoop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2300556F30A81C97002EEF8D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		2300556A30A81C96002EEF8D /* LifeLoop */ = {
+		2300556A30A81C96002EEF8D /* App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = LifeLoop;
+			path = App;
+			sourceTree = "<group>";
+		};
+		2300557630A82F89002EEF8D /* Features */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Features;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +42,9 @@
 		2300555F30A81C96002EEF8D = {
 			isa = PBXGroup;
 			children = (
-				2300556A30A81C96002EEF8D /* LifeLoop */,
+				2300556F30A81C97002EEF8D /* Assets.xcassets */,
+				2300557630A82F89002EEF8D /* Features */,
+				2300556A30A81C96002EEF8D /* App */,
 				2300556930A81C96002EEF8D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,7 +73,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				2300556A30A81C96002EEF8D /* LifeLoop */,
+				2300556A30A81C96002EEF8D /* App */,
+				2300557630A82F89002EEF8D /* Features */,
 			);
 			name = LifeLoop;
 			packageProductDependencies = (
@@ -109,6 +122,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2300557030A81C97002EEF8D /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -258,6 +272,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -270,7 +285,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -289,6 +304,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -301,7 +317,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

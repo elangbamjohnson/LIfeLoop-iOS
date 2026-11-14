@@ -1,0 +1,18 @@
+# macOS metadata
+.DS_Store
+
+# Personal Xcode settings and interface state
+xcuserdata/
+*.xcuserstate
+
+# Generated build products and results
+DerivedData/
+build/
+.build/
+*.xcarchive/
+*.xcresult/
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
