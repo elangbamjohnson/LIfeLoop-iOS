@@ -1,10 +1,37 @@
-# LifeLoop for iPhone and iPad — Development Guide
+# LifeLoop for iPhone and iPad — Final Master Development Guide
 
-**Document version:** 1.0  
+**Document version:** 2.0 (consolidated)  
 **Prepared:** 14 November 2026  
-**Audience:** An iOS developer learning through the design, implementation, and release of LifeLoop  
-**Status:** Proposed development baseline; implementation has not started in this workspace  
-**Scope:** Instructions, architecture, learning objectives, acceptance criteria, and rollout planning. No application code.
+**Inputs compared:** *LifeLoop iOS — Master Development Blueprint v1.0* and *LifeLoop for iPhone and iPad — Development Guide v1.0*  
+**Repository reference:** [elangbamjohnson/LifeLoop](https://github.com/elangbamjohnson/LifeLoop) — inspected `main` commit `1e268acccac2a8a644a27e243801ddc94bba8f65` (23 October 2026)  
+**Scope:** Native iPhone/iPad design, architecture, learning, delivery and verification. **No application code.**  
+**Status:** Proposed living baseline; architectural decisions and backend contract findings must be verified as implementation progresses.
+
+## At a glance — agreed development direction
+
+> **Guiding principle:** Deliver a narrow, trusted LifeLoop journey; understand every engineering choice; test it against the actual backend; release it; then expand without breaking data or other clients.
+
+- **Architecture:** Native SwiftUI + feature-scoped MVVM + proportionate Clean Architecture, enforced through dependency direction, not template-generated classes.
+- **Backend authority:** Existing Express APIs and PostgreSQL remain authoritative for accounts, items, captures, AI processing, reminders and family access.
+- **First public release:** Existing-account compatibility, manual items, Priority/Timeline, text capture, AI review/correction, safe draft/cache behavior, and public-release privacy/security gates. **Working native push is not required for 1.0** unless the product promises notification delivery.
+- **Release later, independently:** APNs reminders; Waiting For; calendar export; offline reconciliation and optionally writes; images/PDFs/audio; knowledge features; family management and collaborative editing; native integrations.
+- **Learning:** Every phase has study targets, build steps, acceptance tests, documented decisions, and evidence for releasing.
+
+## Comparison and final editorial decisions
+
+| Issue | Original master blueprint | Attached development guide | Resolution for version 2.0 |
+| --- | --- | --- | --- |
+| First public 1.0 | Push/reminders before public launch | Core text capture/review first | **Attached sequence wins**; release push as 1.1 with real-device evidence |
+| Starting architecture | Local packages suggested early | Logical feature folders first | **Progressive modularization**; start with folders, extract stable packages after concrete reuse |
+| Account/data compatibility | Integrated but broad | Existing Google-only accounts, shared reads, unknown types, metadata preservation specified | **Retain stronger compatibility gates** in Phases 0–3 |
+| API reality | Endpoint inventory and DTO rules | Calls out stale docs, native auth quirks, side effects and security risks | **Verify behavior from routes and fixtures**, not outdated documentation |
+| Offline sync | Large dedicated later phase | Cached reads/drafts early, optional durable outbox later | **Retain staged reliability approach**; do not promise offline mutation before backend idempotency |
+| Advanced features | Large bundled future phases | Knowledge, media and family split into releasable increments | **Keep independent gates** and reorder by measured demand |
+| Execution discipline | First sprint, release engineering and ownership ledger | Phase gates, decision/risk register, practical learning process | **Merge both into the execution appendices** |
+
+**What changed after comparison:** The attached guide is the editorial base, not just an appendix; it includes more precise analysis of current backend limitations. This edition adds a concrete ownership/module map, endpoint verification worksheet, cross-client acceptance cases, release-blocker ledger, architecture extraction criteria, and a prioritized starting backlog. A few statements were clarified to distinguish observations from re-verification and to avoid misleading cookie/Keychain terminology.
+
+---
 
 ## 1. Project mandate and how to use this guide
 
@@ -22,18 +49,6 @@ Work on one release slice at a time. Finish its acceptance criteria, distribute 
 
 Treat this guide as the project's maintained source of decisions, rather than an immutable specification. At the start of each phase, verify its assumptions against the current backend and Apple requirements. Update the decision log when evidence changes a recommendation. Never silently change a previously shipped behavior.
 
-### Navigation
-
-- [Repository findings](#2-what-the-web-project-actually-contains)
-- [Technology and architecture decisions](#3-technology-and-architecture-decisions)
-- [Modules and SOLID](#4-module-boundaries-and-solid)
-- [Data and API contracts](#5-contracts-to-settle-before-building-features)
-- [Release map](#6-release-map)
-- [Phase-by-phase instructions](#7-phase-by-phase-instructions)
-- [Quality and rollout gates](#8-quality-and-rollout-gates)
-- [Working and learning process](#9-working-and-learning-process)
-- [Decision and risk register](#10-decision-and-risk-register)
-- [First working session](#11-your-first-working-session)
 
 ## 2. What the web project actually contains
 
@@ -41,7 +56,7 @@ Treat this guide as the project's maintained source of decisions, rather than an
 
 The reference is [elangbamjohnson/LifeLoop](https://github.com/elangbamjohnson/LifeLoop), default branch `main`, inspected at commit [1e268acc](https://github.com/elangbamjohnson/LifeLoop/commit/1e268acccac2a8a644a27e243801ddc94bba8f65). This was a static inspection of source, configuration, schemas, tests, and repository documents. The application and tests were not run, and production deployment settings were not verified. The repository's historical passing-test reports are not evidence of a fresh passing run.
 
-The local LifeLoop-iOS workspace was empty at inspection. Xcode 26.6 was installed. That is an environment observation, not a requirement to remain on that version throughout development.
+The attached guide records an empty LifeLoop-iOS workspace and Xcode 26.6 at its original inspection. **Reconfirm both locally in Phase 0**; they were not independently rechecked for this consolidation. The installed Xcode version is an environment observation, not a lasting project requirement.
 
 The web stack contains React/TypeScript/Vite, an Express API, PostgreSQL with Drizzle, Gemini integration, Vitest, and Playwright. Reuse the API and server capabilities after validating them; build native presentation and platform integrations. See the [package manifest](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/package.json).
 
@@ -71,7 +86,7 @@ Sources: [Dashboard](https://github.com/elangbamjohnson/LifeLoop/blob/1e268accca
 1. **The written API/domain documents lag behind implementation.** The shared types use different item fields, status values, and capture fields from the actual database/API. Establish request/response fixtures from current routes before designing Swift models. Do not translate the shared TypeScript file mechanically. Compare [shared domain types](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/shared/types/domain.ts) with the [database schema](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/db/schema.ts).
 2. **Native push is a placeholder.** The iOS notification provider builds a payload and reports delivery without contacting APNs. A real transport, device registration, and delivery-failure handling must precede native reminder promises. See [NotificationProvider](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/NotificationProvider.ts).
 3. **Upload support does not establish media understanding.** The inspected Gemini path sends text containing the stored payload/URL; it does not establish a working binary image, PDF, or audio extraction pipeline. Files are stored under a publicly served uploads directory. Private storage and actual extraction are release gates. See [AIProvider](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/AIProvider.ts), [storage](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/StorageProvider.ts), and [server app](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/app.ts).
-4. **Authentication needs a native and public-release contract.** The current server uses a seven-day session JWT in a cookie. Google-only users can have no password. Password recovery, account deletion, and server-side session revocation are not implemented in the inspected auth router. See [authentication routes](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/auth.ts).
+4. **Authentication needs a native and public-release contract.** The inspected server uses a seven-day session JWT in a cookie. Cookie expiry alone does not constitute server-side revocation. Google-only users can have no password. Password recovery, account deletion, and server-side session revocation are not implemented in the inspected auth router. See [authentication routes](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/auth.ts).
 5. **Item operations already affect reminders.** Manual creation does not create reminders; editing a due date can create them. Completion cancels pending reminders, but reopening does not restore them. Settle this before native editing ships. See [item routes](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/items.ts) and [ReminderService](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/ReminderService.ts).
 6. **SSE is not a durable sync protocol.** Events invalidate client data; they do not provide a replayable change log. Foreground/reconnect reconciliation is necessary. See [EventBus](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/EventBus.ts).
 7. **Ask needs factuality work.** Its fallback can substitute invented defaults for absent dates/amounts, and retrieval inspects the latest 100 owned items. These behaviors must change or be explicitly constrained before a public Ask release. See [AskService](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/AskService.ts).
@@ -112,7 +127,7 @@ The architecture succeeds when a change in the API payload, local database, or n
 | Continuous integration | GitHub Actions with a macOS runner, or Xcode Cloud if preferred | Choose one in Phase 1; automate repeatable release checks |
 | Observability | Structured, redacted logs and Apple crash diagnostics first | Add an external service when the debugging benefit warrants it |
 
-The deployment minimum and required submission SDK are separate decisions. Confirm current build requirements before every submission. Observation is available from iOS/iPadOS 17; see Apple's [model-data guidance](https://developer.apple.com/documentation/swiftui/managing-model-data-in-your-app). SwiftData provides local persistence; it does not automatically synchronize the Express API. See [SwiftData](https://developer.apple.com/documentation/swiftdata).
+The deployment minimum and required submission SDK are separate decisions. As checked on **14 November 2026**, Apple requires uploads to use **Xcode 26 or later and the corresponding iOS/iPadOS 26 SDK or later**; this is **not** a requirement to deploy only to iOS 26. Verify [Apple's current submission requirements](https://developer.apple.com/news/upcoming-requirements/) before every submission. Observation is available from iOS/iPadOS 17; see Apple's [model-data guidance](https://developer.apple.com/documentation/swiftui/managing-model-data-in-your-app). SwiftData provides local persistence; it does not automatically synchronize the Express API. See [SwiftData](https://developer.apple.com/documentation/swiftdata).
 
 Do not introduce CloudKit as a parallel authoritative store, a new backend platform, a dependency-injection framework, or microservices merely to prepare for hypothetical scale.
 
@@ -229,7 +244,7 @@ First-release reliability requires duplicate protection for capture submission a
 
 Keep existing account IDs and server data. Native Google login must reach the existing Google account; email/password login is not an equivalent substitute for a user without a password. Identity linking must require verified ownership and handle Apple's private relay identities deliberately. Do not automatically merge accounts merely because two providers return the same email address. Test linking, unlinking, recovery, and provider-token revocation as part of the account lifecycle.
 
-Start by validating native cookie-based sessions with URLSession; a bearer-token rewrite is not inherently required. Define cookie/session persistence, secure credential storage, expiry, reauthentication, logout, account switching, and revocation. If testing identifies a reason for a dedicated mobile-token flow, record that decision and add it compatibly. Never embed database, AI, mail, or APNs provider secrets in the app.
+Start by validating native cookie-based sessions with URLSession and the platform cookie store; storing HTTP-only cookies and handling credentials in Keychain are different mechanisms. Do not extract or duplicate a server-managed HttpOnly cookie merely to put it in Keychain. A bearer-token rewrite is not inherently required. Define cookie/session persistence, secure credential storage, expiry, reauthentication, logout, account switching, and revocation. If testing identifies a reason for a dedicated mobile-token flow, record that decision and add it compatibly. Never embed database, AI, mail, or APNs provider secrets in the app.
 
 The server remains authoritative. Initial offline behavior is cached reads and protected drafts. Mutations require a successful online acknowledgement. Show stale/offline state honestly; do not describe a cached screen as synchronized.
 
@@ -413,7 +428,7 @@ Neither remote nor local notifications guarantee delivery. Silent pushes may be 
 
 **Steps**
 
-1. Start with the system event editor, prefilled from the item and presented for confirmation.
+1. Start with a user-controlled system event editor, prefilled from the item and presented for confirmation. Treat the result as **one-way export**, not a two-way calendar link.
 2. Define timed versus all-day events, duration defaults, timezone, title, and optional notes. Avoid inserting unnecessary sensitive content.
 3. Record a successful editor save separately from cancel/failure. Handle repeated export and changed due dates without claiming an existing calendar event was updated.
 4. Treat any calendar-added marker as historical app state, not proof that an event still exists.
@@ -707,3 +722,164 @@ Questions to resolve during Phase 0 are deployment/staging access, intended devi
 8. Begin implementation only after Phase 0's exit gate is met. Update this document as decisions become verified facts.
 
 **Development principle:** Each release should make LifeLoop more useful, preserve trust in existing data, and leave you able to explain the engineering decisions behind it.
+
+---
+
+## 12. Execution appendix A — Concrete boundaries without premature packaging
+
+This appendix makes the architecture implementable without supplying source code or forcing new Swift packages too early. **Start as folders inside one Xcode application target**; promote a boundary into a local Swift package only when its contracts are stable and enforcement adds value.
+
+### 12.1 Proposed folder and ownership map
+
+| Logical location | Primary contents | Consumer/owner | Creation trigger |
+| --- | --- | --- | --- |
+| `App/Composition` | Dependency assembly, environment selection, session and navigation coordination | App target | Phase 1 |
+| `App/Navigation` | Route identifiers and deep-link dispatch | App target | Phase 1 |
+| `Shared/Domain` | Stable identifiers, value types, errors, clock/date policies, small protocols | Feature contracts | Phase 1, grow only when reused |
+| `Shared/Networking` | HTTP transport, cookie handling, request/response parsing, error mapping | Data adapters | Phase 2 |
+| `Shared/DesignSystem` | Typography, semantic status styles, reusable accessible components | Feature views | Phase 1 |
+| `Shared/LocalStore` | Account-partitioned drafts/read cache; optionally durable outbox later | Data adapters | Phase 2, expand Phase 6 |
+| `Features/Account` | Signed-out/in state, sign-in, verification, recovery/deletion presentation | Account module | Phase 2 |
+| `Features/Organizer` | Item list, detail, edit, Priority/Timeline, search; later Waiting For | Organizer module | Phase 1 fixtures, Phase 2 real data |
+| `Features/Capture` | Text draft, submission, status observation, extracted-item review | Capture module | Phase 3 |
+| `Features/Reminders` | Reminder preferences, list/creation, platform delivery status | Reminders module | Phase 4 |
+| `Features/Calendar` | Native one-way event export | Calendar integration | Phase 5B |
+| `Features/Media` | Image/document/audio pickers, transfer status and preview | Media module | Phase 7 subphases |
+| `Features/Knowledge` | Entities, relationships and later cited Ask | Knowledge module | Phase 8 subphases |
+| `Features/Family` | Invitations, membership, share management, authorized shared views | Family module | Read-compatibility in Phase 2; management Phase 9 |
+| `Platform` | UserNotifications, EventKitUI, universal links, share extension, widgets | Platform adapters | Only when used |
+| `Tests` | Domain state, ViewModel, DTO mapping, backend contracts, UI journeys | Matching feature owners | Every phase |
+
+**Separation rule:** Feature Views may depend on their own ViewModels and narrowly shared UI/domain contracts; they may not import networking or persistence implementations. Domain cannot import SwiftUI, URLSession, SwiftData, or APNs. Data adapters implement narrow capabilities and are created by the composition root. The server—not a client-side boolean—owns permissions.
+
+### 12.2 Example vertical flow to trace during code review
+
+**Complete an existing item**: Item screen expresses intent -> Organizer ViewModel enters saving state -> an item mutation capability is called -> API adapter sends the identified item and expected revision -> server authorizes the operation, applies item and reminder side effects -> response is mapped into domain values -> cache is refreshed -> screen displays the authoritative result. For an ambiguous timeout, the app checks current server state before retrying; it never displays a false success.
+
+**Submit a text capture**: Draft is retained locally -> consent and account scope checked -> a stable client operation ID is created -> server accepts capture -> UI displays the saved processing state -> background server work proceeds -> poll/reconcile until a terminal or recoverable result -> extracted records are reviewed and corrected -> confirmed items appear in organizer views. A network cancellation never means an already accepted server job was cancelled.
+
+### 12.3 When a Swift package is justified
+
+Extract `Domain` or `DesignSystem` when a second feature consumes stable contracts and a package will prevent forbidden dependencies. Extract a platform/data package when an extension shares it or independent test compilation provides a clear benefit. **Do not** create one package per screen, a universal generic service, or an abstraction for each trivial operation. Record the before/after dependency graph whenever a boundary changes.
+
+### 12.4 Swift 6 and structured concurrency learning checkpoints
+
+- Distinguish `@MainActor`-isolated screen state from thread-safe repositories and background work. UI-bound mutations must occur under appropriate isolation.
+- Prefer structured child tasks and explicit cancellation. Avoid detached tasks that outlive their user/account intent without a lifecycle owner.
+- Use `Sendable`-safe immutable values across isolation boundaries; do not suppress warnings with blanket unchecked conformance.
+- For mutable coordinators, consider actors only when shared mutable state actually requires serialization. Document actor reentrancy around suspension points.
+- Treat login/logout, app backgrounding, and scene changes as cancellation and ownership boundaries; stale results must be discarded.
+
+## 13. Execution appendix B — Backend/API integration ledger
+
+The following are **verification targets drawn from the inspected routes**, not a promise that live staging behaves identically. For every entry, capture one successful redacted fixture, an error fixture, the permitted role, backend side effects, and the Swift domain mapping.
+
+| Feature | Existing route families | Client operations to verify | Required by |
+| --- | --- | --- | --- |
+| Account | `/api/v1/auth/register`, `/login`, `/google`, `/me`, `/logout`, `/verify-email`, `/resend-verification`, `/change-email` | Cookie/session lifetime, verification, errors, token audience, account ownership | Phase 2 |
+| Organizer | `/api/v1/items` and `/items/:id`; `/complete`, `/snooze`, `/timeline`, `/reminders` | Create/edit/list/delete, ordering, null dates, metadata merge, reminder side effects | Phase 2 |
+| Capture | `/api/v1/captures`, `/:id/retry` | Multipart body, `source=ios`, time zone, accepted vs processed, timeout and retry | Phase 3 |
+| Reminders | `/api/v1/reminders`, `/standard-relative`, `/:id/snooze`, `/preferences` | Trigger calculations, permission policy, multi-device and dispatch side effects | Phase 4 |
+| Updates | `/api/v1/events` | SSE invalidation format, authorization, reconnect and full reconciliation | Phase 6 or earlier if demonstrated useful |
+| Relations/Ask | `/api/v1/relations`, `/api/v1/ask` | Admin gating, relation authorization, supported citations and unknown responses | Phase 8 |
+| Family | `/api/v1/families`, invitations, members, shared items and notifications | Membership, read/edit capabilities, revocation and deep-link identity | Phase 2 compatibility; Phase 9 management |
+| Calendar | `/api/v1/items/:id/calendar.ics`, `/calendar-added` | Existing one-way export semantics and marker reliability | Phase 5B |
+
+**Minimum contract fields for each operation:** URI and method; user/capability requirements; request version and idempotency identifier; sample success/error JSON; null and unknown variants; date/time interpretation; ownership and server side effects; pagination and sorting; cache invalidation; retry safety; backward-compatible change rules; named confirming test.
+
+**Critical actual-source mismatches:** Current shared domain definitions and API/database types are not identical. Do not derive Swift enums blindly from `src/shared/types/domain.ts`. A `canEdit` field on a shared record is not an authorization grant for ordinary item-update routes. SSE is a change hint, not a replayable change feed. An APNs-shaped payload returned from the notification service is not proof of sending a remote push. Media upload success is not proof that Gemini has processed the binary content.
+
+## 14. Execution appendix C — Priority acceptance matrix
+
+Use this matrix in addition to each phase's exit gate. It makes the top cross-client risks easy to reproduce before shipping.
+
+| ID | Risk-focused scenario | Evidence expected | Earliest gate |
+| --- | --- | --- | --- |
+| AC-01 | Existing Google-only user signs in natively without account duplication | Same user ID and historical items; verified identity linking | Phase 2 |
+| AC-02 | Web and iPad edit the same item before iPhone save | Precondition rejects stale edit or presents controlled merge choice; no silent overwrite | Phase 2 |
+| AC-03 | Edit an item title while unknown metadata fields exist | Unrelated metadata is preserved in response and later web view | Phase 2 |
+| AC-04 | Log out of account A while a request is in flight, then sign into B | No A records, drafts, live events or response data displayed in B | Phase 2 |
+| AC-05 | Family member's share is revoked while iPad has cached the item | Server blocks new reads; app purges on reconciliation; offline limitation documented | Phase 2/9 |
+| AC-06 | Submit capture, lose the response after server commit, retry | Exactly one durable capture and no duplicated extracted items | Phase 3 |
+| AC-07 | Server restarts during AI processing | Watchdog/resume logic eventually leads to known terminal/retry state | Phase 3 |
+| AC-08 | AI extracts the wrong amount/date from user text | User can correct it; unconfirmed extraction does not schedule unintended action | Phase 3 |
+| AC-09 | AI refuses or fails, or user declines AI consent | Original input is recoverable and manual entry remains available | Phase 3 |
+| AC-10 | Account is deleted through native settings | Server removes/retains data according to documented policy, revokes sessions and removes eligible private assets | Public 1.0 |
+| AC-11 | Reminder due date changes on web after device registration | Only correct occurrence is dispatched and deep-links to authorized item | Phase 4 |
+| AC-12 | User switches accounts or revokes notification permission | Old device token/subscription cannot leak private reminder content to new user | Phase 4 |
+| AC-13 | Calendar event export is cancelled then repeated | No false success state; UI does not claim managed synchronization | Phase 5B |
+| AC-14 | Device terminates immediately after offline operation is sent | Outbox/server reconcile safely; mutation is never doubled | Phase 6 optional |
+| AC-15 | A private document is uploaded then user removes it | Authorized access only; originals/derivatives follow deletion policy | Phase 7 |
+| AC-16 | An Ask answer refers to missing/other-user information | Refuses unsupported claim; citations are valid and access-controlled | Phase 8B |
+| AC-17 | Two family members edit one item while one loses access | Revocation checked server-side; no unauthorized commit or leaked cache on reconnect | Phase 9B |
+| AC-18 | Large text, VoiceOver and narrow iPad window | No lost form controls, clipped content or inaccessible save/cancel paths | Every phase |
+
+## 15. Execution appendix D — Hard-stop gates and architecture decision points
+
+### Hard-stop release gates
+
+**Before any external/public release:** repeat a deployed-backend contract run; confirm authentication and account recovery/deletion; validate data sharing/AI consent; verify item ownership and server-side authorization; test unknown item data; protect user secrets and logs; demonstrate crash/error recovery; obtain functioning privacy/support URLs; test iPhone and iPad with accessibility; keep older released clients functioning.
+
+**Before native push is advertised:** real APNs transport, authenticated per-device registration, clean logout/revocation, stable occurrence deduplication, physical-device receipt/diagnostics, sensitive-content settings and lifecycle/date tests. Do not report APNs acceptance as proof a user read an alert, and do not indiscriminately use time-sensitive interruption levels.
+
+**Before media capture is released:** private durable storage, authorized download, deletion/retention policy, backend extraction using actual bytes for supported formats, explicit user correction, and clear unsupported-file behavior. Public static `/uploads` URLs are not an acceptable privacy design for sensitive family documents.
+
+**Before offline writes are released:** confirmed server idempotency and revision semantics, durable account-scoped outbox, migration tests, conflict handling, logout purge, and replay after ambiguous timeouts. A local cache alone is not synchronization.
+
+**Before Ask is released publicly:** admin access policy resolved on server, retrieval scope meets its product promise, missing values are not invented, citations resolve to authorized items, prompt-injection and cross-user tests pass, and AI cost/privacy controls are reviewed.
+
+**Before collaborative family edits:** server mutation authorization beyond `canEdit`, role/action matrix, concurrent edit protocol, notification ownership model, and revocation tested during pending operations.
+
+### Decisions to record before their gates
+
+| Decision ID | Question | Provisional choice | Freeze before |
+| --- | --- | --- | --- |
+| ADR-01 | How do features compose? | Feature MVVM + Clean dependency boundaries; one app target initially | Phase 1 |
+| ADR-02 | What's the first public user promise? | Existing accounts, core items, text capture/review; no native push promise | Phase 0 |
+| ADR-03 | Which layer owns data? | Express/Postgres is source of truth; native cache is disposable except drafts/outbox | Phase 0 |
+| ADR-04 | How are native sessions represented? | Validate server cookies before considering mobile tokens; account-scoped logout | Phase 2 |
+| ADR-05 | How are date-only values and time zones interpreted? | Preserve user intent; server-authoritative persistence; common fixtures | Phase 2 |
+| ADR-06 | What does AI confirmation mean? | New native captures do not create unreviewed automated obligations | Phase 3 |
+| ADR-07 | Who schedules synchronized reminders? | Server schedule + remote APNs; no duplicate local alerts | Phase 4 |
+| ADR-08 | What is the offline data promise? | Cached read and drafts first; outbox only with idempotency/conflicts | Phase 6 |
+| ADR-09 | Who can edit shared items? | Server enforces capability and revision, separate from membership UI | Phase 9B |
+| ADR-10 | What deployment target/toolchain? | Provisional iOS/iPadOS 17; current submission tooling reviewed per release | Phase 0 |
+
+## 16. Execution appendix E — First backlog and learning evidence
+
+Treat each item as a **separate small ticket**, not a request to implement every feature simultaneously. A ticket is complete when there is a behavior demonstration, supporting test evidence, and a short written explanation of the learning outcome.
+
+| Order | First-action ticket | Proof of completion | Main learning |
+| --- | --- | --- | --- |
+| 1 | Pin inspected Git revision; validate deployed backend and staging | Source/contract delta list | Source-of-truth reasoning |
+| 2 | Walk existing email + Google accounts with safe test data | Screenshots/recorded outcome, no personal data logged | Auth identity boundaries |
+| 3 | Freeze item/capture/status/date fixtures and error examples | Redacted contract dataset | DTO/domain mapping |
+| 4 | Choose provisional deployment minimum, signing and CI | Written ADR with device audience | iOS tooling and distribution |
+| 5 | Sketch iPhone capture flow and iPad list/detail flow | Usability walkthrough | Adaptive navigation |
+| 6 | Create smallest universal app with one fixture list/detail/edit | Internal device/simulator run | SwiftUI state and composition |
+| 7 | Test an item flow with a fake data capability | Deterministic green unit/UI tests | SOLID and dependency injection |
+| 8 | Establish session lifecycle and network-error vocabulary | Tested state-transition diagram | Structured concurrency + network failures |
+| 9 | Replace fixture data with one authenticated staging read | Contract+UI test and safe logout | API mapping and cookie semantics |
+| 10 | Record phase retrospective and freeze next slice | Updated ADR/test/learning log | Architecture governance |
+
+### Learning record: minimal repeatable worksheet
+
+For every ticket, record five short answers: **(1)** What behavior was delivered? **(2)** What iOS/Swift concept did I learn? **(3)** What alternatives did I reject, and why? **(4)** How does the behavior fail and recover? **(5)** What test or device evidence proves it? Add one follow-up question if the behavior exposed a boundary worth revisiting. This creates a useful technical reference without turning the project into a generic course.
+
+### Working with an AI coding assistant during implementation
+
+Provide one ticket and its applicable sections from this guide. Request architectural reasoning and edge cases **before** code changes; constrain modifications to the ticket and connected tests; review diffs; run the test matrix; update the ADR when design changes. Do not instruct an agent to reproduce the entire web app or generate every module in one pass. This final PDF itself contains no application code.
+
+## 17. References, provenance and maintenance policy
+
+**Primary repository evidence:** [LifeLoop repository](https://github.com/elangbamjohnson/LifeLoop), [source revision](https://github.com/elangbamjohnson/LifeLoop/commit/1e268acccac2a8a644a27e243801ddc94bba8f65), [backend API composition](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/app.ts), [auth routes](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/auth.ts), [data schema](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/db/schema.ts), [captures](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/captures.ts), [item routes](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/items.ts), [notification provider](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/services/NotificationProvider.ts), [family routes](https://github.com/elangbamjohnson/LifeLoop/blob/1e268acccac2a8a644a27e243801ddc94bba8f65/src/server/api/v1/families.ts).
+
+**Apple references verified on 14 November 2026:** [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/) (including account deletion, third-party login rules, data use), [account deletion guidance](https://developer.apple.com/support/offering-account-deletion-in-your-app/), [SDK/submission requirements](https://developer.apple.com/news/upcoming-requirements/). These may change and must be reviewed again when submitting.
+
+**Provenance and verification:** This edition compares the two supplied blueprint versions, consolidates their recommendations and incorporates the static repository inspection baseline above. It **does not** claim to have executed backend tests, compiled a native target, verified deployment configurations, or proven the implementation of proposed future APIs. The historical repository QA reports are snapshots, not fresh release evidence.
+
+**Versioning rule:** Keep this document in Git next to the iOS project, update its revision number after changes to architecture/scope/gates, and attach dated ADRs. The current development phase owns a short task list; later phases remain strategic until revalidated. A successful release is a product behavior supported by tests and user evidence, not merely a green build.
+
+---
+
+**Final project standard:** A small feature is finished only when it is useful, trustworthy across all supported clients, understandable to its owner, demonstrably tested, and safe to extend.
