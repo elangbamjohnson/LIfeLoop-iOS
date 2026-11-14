@@ -15,7 +15,10 @@ struct RootView: View {
     }
 
     var body: some View {
-        ItemsListView(viewModel: viewModel)
+        NavigationStack {
+            ItemsListView(viewModel: viewModel)
+                .navigationTitle("LifeLoop")
+        }
     }
 }
 

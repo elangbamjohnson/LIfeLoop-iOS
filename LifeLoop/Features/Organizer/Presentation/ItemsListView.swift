@@ -20,7 +20,11 @@ struct ItemsListView: View {
 
             case .loaded(let items):
                 List(items) { item in
-                    ItemRowView(item: item)
+                    NavigationLink {
+                        ItemDetailView(item: item)
+                    } label: {
+                        ItemRowView(item: item)
+                    }
                 }
 
             case .empty:
