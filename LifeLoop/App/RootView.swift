@@ -8,11 +8,32 @@
 import SwiftUI
 
 struct RootView: View {
+    @State private var viewModel: ItemsListViewModel
+
+    init(repository: any ItemRepository) {
+        self.viewModel = ItemsListViewModel(repository: repository)
+    }
+
     var body: some View {
-        ItemsListView(items: SampleItems.all)
+        ItemsListView(viewModel: viewModel)
     }
 }
 
-#Preview {
-    RootView()
+#Preview("Sample items") {
+    RootView(repository: SampleItemRepository(items: SampleItems.all))
+}
+
+#Preview("Empty list") {
+    RootView(
+        repository: SampleItemRepository(items: [])
+    )
+}
+
+#Preview("Loading failure") {
+    RootView(
+        repository: SampleItemRepository(
+            items: [],
+            shouldFail: true
+        )
+    )
 }

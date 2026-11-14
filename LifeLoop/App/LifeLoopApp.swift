@@ -11,7 +11,9 @@ import SwiftUI
 struct LifeLoopApp: App {
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(
+                repository: SampleItemRepository(items: SampleItems.all)
+            )
         }
     }
 }

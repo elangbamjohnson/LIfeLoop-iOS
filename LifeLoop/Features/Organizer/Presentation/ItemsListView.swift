@@ -8,19 +8,48 @@
 import SwiftUI
 
 struct ItemsListView: View {
-    let items: [LifeItem]
+    let viewModel: ItemsListViewModel
+
+    @State private var retryCount = 0
 
     var body: some View {
-        List(items) { item in
-            ItemRowView(item: item)
+        Group {
+            switch viewModel.state {
+            case .idle, .loading:
+                ProgressView("Loading items…")
+
+            case .loaded(let items):
+                List(items) { item in
+                    ItemRowView(item: item)
+                }
+
+            case .empty:
+                ContentUnavailableView(
+                    "No items yet",
+                    systemImage: "tray",
+                    description: Text(
+                        "Your items will appear here."
+                    )
+                )
+
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label(
+                        "Unable to load items",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Try again") {
+                        retryCount += 1
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: retryCount) {
+            await viewModel.load()
         }
     }
-}
-
-#Preview("Sample items") {
-    ItemsListView(items: SampleItems.all)
-}
-
-#Preview("Empty list") {
-    ItemsListView(items: [])
 }
