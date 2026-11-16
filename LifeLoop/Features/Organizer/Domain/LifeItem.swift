@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct LifeItem: Identifiable {
+struct LifeItem: Identifiable, Codable {
     let id: UUID
     var title: String
     var status: ItemStatus

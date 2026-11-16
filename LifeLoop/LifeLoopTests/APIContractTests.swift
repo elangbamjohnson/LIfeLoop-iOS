@@ -138,6 +138,30 @@ struct APIContractTests {
         #expect(error == .conflict)
     }
 
+    @Test func offlineRestorationRequiresUnexpiredVerifiedAccount() async throws {
+        let transport = ContractTransport()
+        transport.handler = { _ in throw URLError(.notConnectedToInternet) }
+        let store = MemoryCredentials()
+        let account = Account(id: UUID(), email: "offline@example.com", accountStatus: "active", isAdmin: false)
+        store.credential = SessionCredential(token: "token", expiresAt: .distantFuture, account: account)
+        let repository = APIAccountRepository(client: APIClient(baseURL: server, transport: transport, credentials: store))
+        #expect(try await repository.currentAccount().id == account.id)
+        store.credential = SessionCredential(token: "token", expiresAt: .distantPast, account: account)
+        await #expect(throws: APIError.self) { try await repository.currentAccount() }
+        #expect(store.credential == nil)
+    }
+
+    @Test func revokedAccountCannotFallBackToOfflineIdentity() async throws {
+        let transport = ContractTransport()
+        transport.handler = { _ in self.response("{}", status: 403) }
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "token", expiresAt: .distantFuture,
+            account: Account(id: UUID(), email: "a@example.com", accountStatus: "active", isAdmin: false))
+        let repository = APIAccountRepository(client: APIClient(baseURL: server, transport: transport, credentials: store))
+        await #expect(throws: APIError.self) { try await repository.currentAccount() }
+        #expect(store.credential == nil)
+    }
+
     private var accountJSON: String {
         "{\"user\":{\"id\":\"\(accountID)\",\"email\":\"reader@example.com\",\"isAdmin\":false,\"accountStatus\":\"active\"}}"
     }

@@ -10,6 +10,8 @@ import SwiftUI
 
 struct ItemEditView: View {
     let item: LifeItem
+    let localStore: AccountLocalStore?
+    private let draftBaseRevision: String?
     let onSave: (LifeItem) async throws -> Void
 
     @State private var draftTitle: String
@@ -19,11 +21,24 @@ struct ItemEditView: View {
 
     init(
         item: LifeItem,
+        localStore: AccountLocalStore? = nil,
         onSave: @escaping (LifeItem) async throws -> Void
     ) {
         self.item = item
+        self.localStore = localStore
         self.onSave = onSave
-        self.draftTitle = item.title
+        do {
+            let savedDraft = try localStore?.draft(itemID: item.id)
+            self.draftTitle = savedDraft?.title ?? item.title
+            self.draftBaseRevision = savedDraft.map { $0.baseRevision } ?? item.updatedAt
+            if let savedDraft, savedDraft.baseRevision != item.updatedAt {
+                self.errorMessage = "This draft was made before the item changed. Review your draft before continuing."
+            }
+        } catch {
+            self.draftTitle = item.title
+            self.draftBaseRevision = item.updatedAt
+            self.errorMessage = "The saved draft could not be read."
+        }
     }
 
     var body: some View {
@@ -62,7 +77,10 @@ struct ItemEditView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
-                    dismiss()
+                    do {
+                        try localStore?.removeDraft(itemID: item.id)
+                        dismiss()
+                    } catch { errorMessage = "Could not discard the saved draft. Please try again." }
                 }
                 .disabled(isSaving)
                 .accessibilityIdentifier("cancelItemEdit")
@@ -78,7 +96,12 @@ struct ItemEditView: View {
                 .accessibilityIdentifier("saveItemEdit")
             }
         }
-        .interactiveDismissDisabled(isSaving)
+        .interactiveDismissDisabled()
+        .onChange(of: draftTitle) { _, title in
+            do {
+                try localStore?.saveDraft(ItemDraft(title: title, baseRevision: draftBaseRevision), itemID: item.id)
+            } catch { errorMessage = "This draft could not be saved on this device." }
+        }
     }
 
     private var trimmedTitle: String {
@@ -90,6 +113,10 @@ struct ItemEditView: View {
             return
         }
 
+        guard draftBaseRevision == item.updatedAt else {
+            errorMessage = "The item has changed since this draft was saved. Your draft is retained; saving requires conflict resolution."
+            return
+        }
         isSaving = true
         errorMessage = nil
 
@@ -98,6 +125,12 @@ struct ItemEditView: View {
 
         do {
             try await onSave(updatedItem)
+            do { try localStore?.removeDraft(itemID: item.id) }
+            catch {
+                errorMessage = "Changes were saved, but the local draft could not be removed."
+                isSaving = false
+                return
+            }
             dismiss()
         } catch {
             isSaving = false

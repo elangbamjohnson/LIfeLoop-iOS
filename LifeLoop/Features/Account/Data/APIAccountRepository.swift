@@ -15,13 +15,21 @@ final class APIAccountRepository: AccountRepository {
             "api/v1/auth/login", method: "POST", body: body, authenticated: false
         )
         let account = try decodeAccount(data)
-        try client.saveSession(from: response)
+        try client.saveSession(from: response, account: account)
         return account
     }
 
     func currentAccount() async throws -> Account {
-        let (data, _) = try await client.request("api/v1/auth/me")
-        return try decodeAccount(data)
+        do {
+            let (data, _) = try await client.request("api/v1/auth/me")
+            return try decodeAccount(data)
+        } catch let error as APIError where error == .unauthorized || error == .forbidden {
+            try client.clearSession()
+            throw error
+        } catch let error as URLError where CachedItemRepository.canUseCache(error) {
+            guard let account = try client.offlineAccount() else { throw error }
+            return account
+        }
     }
 
     func signOut() throws {

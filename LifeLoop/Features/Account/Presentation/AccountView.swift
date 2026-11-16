@@ -1,13 +1,18 @@
 import SwiftUI
+import SwiftData
 
 struct AccountView: View {
     @State private var viewModel: AccountViewModel
     @State private var email = ""
     @State private var password = ""
     @State private var signInTask: Task<Void, Never>?
+    private let server: URL
+    private let container: Result<ModelContainer, Error>
     private let itemRepository: any ItemRepository
 
-    init(accountRepository: any AccountRepository, itemRepository: any ItemRepository) {
+    init(accountRepository: any AccountRepository, itemRepository: any ItemRepository, server: URL, container: Result<ModelContainer, Error>) {
+        self.server = server
+        self.container = container
         self.viewModel = AccountViewModel(repository: accountRepository)
         self.itemRepository = itemRepository
     }
@@ -20,22 +25,11 @@ struct AccountView: View {
             case .signedOut:
                 signInForm
             case .signedIn(let account):
-                RootView(repository: itemRepository, allowsEditing: true)
+                ConnectedOrganizerView(account: account, server: server, container: container,
+                                       remote: itemRepository, onSignOut: { viewModel.signOut() },
+                                       onSessionExpired: { viewModel.handleUnauthorized() })
                     .id(account.id)
-                    .safeAreaInset(edge: .bottom) {
-                        VStack {
-                            if let message = viewModel.errorMessage {
-                                Text(message).font(.footnote)
-                            }
-                            HStack {
-                                Text(account.email).font(.caption)
-                                Spacer()
-                                Button("Sign out") { viewModel.signOut() }
-                            }
-                        }
-                        .padding()
-                        .background(.bar)
-                    }
+
             }
         }
         .task { await viewModel.restore() }

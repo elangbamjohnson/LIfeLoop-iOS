@@ -1,6 +1,6 @@
 import Foundation
 
-struct Account: Decodable, Equatable {
+struct Account: Codable, Equatable {
     let id: UUID
     let email: String
     let accountStatus: String

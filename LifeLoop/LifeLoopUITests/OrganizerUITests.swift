@@ -12,6 +12,7 @@ final class OrganizerUITests: XCTestCase {
 
     func testCancelDiscardsDraftAndSaveUpdatesList() {
         let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
         app.launch()
         openFirstItem(app)
         app.buttons["editItem"].tap()
@@ -35,6 +36,7 @@ final class OrganizerUITests: XCTestCase {
 
     func testDraftSurvivesRotationAndBlankTitleCannotSave() {
         let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
         app.launch()
         openFirstItem(app)
         app.buttons["editItem"].tap()
@@ -54,10 +56,12 @@ final class OrganizerUITests: XCTestCase {
     func testEmptyAndFailureStates() {
         let app = XCUIApplication()
         app.launchArguments = ["--empty-items"]
+        app.launchArguments.append("--ui-testing")
         app.launch()
         XCTAssertTrue(app.staticTexts["No items yet"].waitForExistence(timeout: 5))
         app.terminate()
         app.launchArguments = ["--failed-items"]
+        app.launchArguments.append("--ui-testing")
         app.launch()
         XCTAssertTrue(app.buttons["Try again"].waitForExistence(timeout: 5))
         app.buttons["Try again"].tap()
@@ -67,6 +71,7 @@ final class OrganizerUITests: XCTestCase {
     func testLargeTextEditorIsAccessible() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchArguments.append("--ui-testing")
         app.launch()
         openFirstItem(app)
         app.buttons["editItem"].tap()

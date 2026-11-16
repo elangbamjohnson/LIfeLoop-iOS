@@ -4,7 +4,7 @@ Native iPhone/iPad client. SwiftUI + Observation, feature MVVM, repository bound
 
 ## Run without signing
 
-Open `LifeLoop/LifeLoop.xcodeproj`, choose the shared **LifeLoop** scheme, and run on an iPhone or iPad simulator. Debug uses deterministic demo items; edits last for the current process only. The UI labels this explicitly.
+Open `LifeLoop/LifeLoop.xcodeproj`, choose the shared **LifeLoop** scheme, and run on an iPhone or iPad simulator. Debug uses deterministic demo items; saved demo items reset on restart, while unsaved title drafts are recovered. Cancel discards a draft; successful Save removes it. The UI labels demo data explicitly.
 
 Run the same suite as CI from the repository root:
 
@@ -37,7 +37,7 @@ Staging does not exist yet. Connected mode implements **email/password sign-in, 
 
 The backend currently accepts a `session` cookie. Passwords are not persisted; the session credential is kept in a per-server Keychain entry. Requests never use shared cookies or disk HTTP caching. Logout invalidates pending responses. The inspected server's logout does not revoke its JWT; server revocation remains a prerequisite for the agreed production session contract.
 
-Connected editing is intentionally unavailable until the backend supports and verifies stale-write preconditions. Google/Apple identity linking, registration/verification UI, recovery/deletion, cache/draft persistence, shared-item compatibility, and live session-expiry handling remain Phase 2 work. They are not represented by success-returning stubs.
+Connected editing is intentionally unavailable until the backend supports and verifies stale-write preconditions. Google/Apple identity linking, registration/verification UI, recovery/deletion, shared-item compatibility and full conflict resolution remain Phase 2 work. They are not represented by success-returning stubs.
 
 ## Execution checkpoint
 
@@ -48,3 +48,11 @@ Connected editing is intentionally unavailable until the backend supports and ve
 - Signing/distribution are on hold and do not block local implementation.
 
 The authoritative roadmap is `docs/LifeLoop_iOS_Final_Master_Guide_v2.0.md`. Source behavior must be rechecked before enabling writes, captures, APNs, media, Ask, or shared mutations.
+
+## Phase 2 persistence checkpoint
+
+Personal-item snapshots and title drafts use a version-one SwiftData store, keyed by server and account. No shared items are persisted. Offline reads are allowed only for connection failures, with a saved-time banner. HTTP authorization failures and TLS failures never use cache fallback. An offline cold start requires a previously verified active account and an unexpired credential in Keychain; server revocation cannot be detected while disconnected.
+
+Explicit logout purges that account's snapshots/drafts and invalidates its store before clearing credentials. Session expiry returns to sign-in and retains isolated drafts for recovery by the same account. Drafts retain their base revision and cannot be saved over a changed revision. Interactive merge/review is still outstanding. Connected mutations remain unavailable, so connected draft editing is not exposed yet; recovery can be exercised in demo mode.
+
+Read `Features/Organizer/Persistence/AccountLocalStore.swift`, `Data/CachedItemRepository.swift`, and their tests for the persistence flow. Storage errors are surfaced rather than deleting or silently recreating data. Tests use isolated memory stores and a temporary disk store, never a real account database.

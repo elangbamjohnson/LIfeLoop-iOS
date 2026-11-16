@@ -102,7 +102,7 @@ final class APIClient {
         }
     }
 
-    func saveSession(from response: HTTPURLResponse) throws {
+    func saveSession(from response: HTTPURLResponse, account: Account? = nil) throws {
         let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
             result[String(describing: entry.key)] = String(describing: entry.value)
         }
@@ -111,7 +111,13 @@ final class APIClient {
               let expiry = cookie.expiresDate, expiry > Date(), !cookie.value.isEmpty else {
             throw APIError.invalidResponse
         }
-        try credentials.save(SessionCredential(token: cookie.value, expiresAt: expiry))
+        try credentials.save(SessionCredential(token: cookie.value, expiresAt: expiry, account: account))
+    }
+
+    func offlineAccount() throws -> Account? {
+        guard let credential = try credentials.read(), credential.expiresAt > Date(),
+              credential.account?.accountStatus == "active" else { return nil }
+        return credential.account
     }
 
     func clearSession() throws {

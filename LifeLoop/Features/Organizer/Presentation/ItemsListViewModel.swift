@@ -21,6 +21,8 @@ final class ItemsListViewModel {
 
     private(set) var state: State = .idle
     private(set) var lastLoadedAt: Date?
+    private(set) var showingCache = false
+    private(set) var requiresSignIn = false
     private(set) var mutatingItemIDs: Set<UUID> = []
     var actionError: String?
 
@@ -47,7 +49,8 @@ final class ItemsListViewModel {
             }
 
             state = items.isEmpty ? .empty : .loaded(items)
-            lastLoadedAt = Date()
+            lastLoadedAt = repository.cacheDate ?? Date()
+            showingCache = repository.cacheDate != nil
         } catch {
             guard currentGeneration == loadGeneration else {
                 return
@@ -58,6 +61,7 @@ final class ItemsListViewModel {
                 return
             }
 
+            if case APIError.unauthorized = error { requiresSignIn = true }
             state = .failed(
                 "We couldn't load your items. Please try again."
             )

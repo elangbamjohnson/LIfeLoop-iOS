@@ -55,6 +55,8 @@ final class AccountViewModel {
     }
 
     func handleUnauthorized() {
+        try? repository.signOut()
+        isBusy = false
         state = .signedOut
         errorMessage = "Your session has expired. Please sign in again."
         generation += 1

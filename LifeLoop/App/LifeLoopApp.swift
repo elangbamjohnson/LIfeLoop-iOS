@@ -18,7 +18,8 @@ struct LifeLoopApp: App {
                 } else if let services = composition.connected {
                     AccountView(
                         accountRepository: services.accountRepository,
-                        itemRepository: services.itemRepository
+                        itemRepository: services.itemRepository,
+                        server: services.server, container: services.container
                     )
                 }
             } else {
@@ -32,9 +33,15 @@ struct LifeLoopApp: App {
     }
 
     private var demoContent: some View {
-        RootView(repository: demoRepository)
+        Group {
+            if case .success(let store) = composition.demoStore {
+                RootView(repository: demoRepository, localStore: store)
+            } else {
+                ContentUnavailableView("Local storage unavailable", systemImage: "externaldrive.badge.exclamationmark")
+            }
+        }
             .safeAreaInset(edge: .bottom) {
-                Text("Demo data · Changes reset when the app restarts")
+                Text("Demo items reset on restart · Unsaved drafts are kept")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)

@@ -4,6 +4,7 @@ import Security
 struct SessionCredential: Codable {
     let token: String
     let expiresAt: Date
+    var account: Account? = nil
 }
 
 @MainActor
