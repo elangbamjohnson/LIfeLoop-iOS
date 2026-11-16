@@ -1,0 +1,3 @@
+// Production is intentionally unconfigured until the backend is verified.
+LIFELOOP_ENVIRONMENT = production
+LIFELOOP_API_BASE_URL =

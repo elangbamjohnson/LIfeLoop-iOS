@@ -9,10 +9,14 @@ import Foundation
 import SwiftUI
 
 struct RootView: View {
+    let allowsEditing: Bool
     @State private var viewModel: ItemsListViewModel
     @State private var selectedItemID: UUID?
+    // The root outlives adaptive column changes, so it owns the active editor.
+    @State private var editingItem: LifeItem?
 
-    init(repository: any ItemRepository) {
+    init(repository: any ItemRepository, allowsEditing: Bool = true) {
+        self.allowsEditing = allowsEditing
         self.viewModel = ItemsListViewModel(repository: repository)
     }
 
@@ -20,15 +24,15 @@ struct RootView: View {
         NavigationSplitView {
             ItemsListView(
                 viewModel: viewModel,
+                allowsEditing: allowsEditing,
                 selectedItemID: $selectedItemID
             )
             .navigationTitle("LifeLoop")
         } detail: {
             if let item = selectedItem {
-                ItemDetailView(item: item) { updatedItem in
-                    viewModel.updateItem(updatedItem)
+                ItemDetailView(item: item, allowsEditing: allowsEditing) {
+                    editingItem = item
                 }
-                .id(item.id)
             } else {
                 ContentUnavailableView(
                     "Select an item",
@@ -40,6 +44,13 @@ struct RootView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .fullScreenCover(item: $editingItem) { item in
+            NavigationStack {
+                ItemEditView(item: item) { updatedItem in
+                    _ = try await viewModel.saveTitle(for: item, newTitle: updatedItem.title)
+                }
+            }
+        }
     }
 
     private var selectedItem: LifeItem? {

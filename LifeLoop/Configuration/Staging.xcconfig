@@ -1,0 +1,3 @@
+// Fill in only when staging exists. A URL is configuration, never a secret.
+LIFELOOP_ENVIRONMENT = staging
+LIFELOOP_API_BASE_URL =

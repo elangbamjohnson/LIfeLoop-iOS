@@ -1,0 +1,35 @@
+name: iOS
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+      - name: Test without signing
+        env:
+          DEVICE_FAMILY: ${{ matrix.device }}
+          DERIVED_DATA_PATH: ${{ runner.temp }}/LifeLoopDerivedData
+        run: scripts/test-ios.sh
+      - name: Keep test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.device }}
+          path: ${{ runner.temp }}/LifeLoopDerivedData/Logs/Test/*.xcresult
+          if-no-files-found: ignore

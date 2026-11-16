@@ -9,15 +9,24 @@ import SwiftUI
 
 struct ItemRowView: View {
     let item: LifeItem
+    var isMutating: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(item.title)
-                .font(.body)
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.body)
 
-            Text(statusTitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                Text(statusTitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isMutating {
+                Spacer()
+                ProgressView()
+                    .controlSize(.small)
+            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -45,4 +54,15 @@ struct ItemRowView: View {
     List(SampleItems.all) { item in
         ItemRowView(item: item)
     }
+}
+
+#Preview("Long title and large text") {
+    List {
+        ItemRowView(item: LifeItem(
+            id: SampleItems.all[0].id,
+            title: "Collect the documents needed to renew car insurance",
+            status: .pendingReview
+        ))
+    }
+    .environment(\.dynamicTypeSize, .accessibility5)
 }
