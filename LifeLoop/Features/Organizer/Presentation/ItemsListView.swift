@@ -21,7 +21,9 @@ struct ItemsListView: View {
             case .loaded(let items):
                 List(items) { item in
                     NavigationLink {
-                        ItemDetailView(item: item)
+                        ItemDetailView(item: item) { updatedItem in
+                            viewModel.updateItem(updatedItem)
+                        }
                     } label: {
                         ItemRowView(item: item)
                     }
@@ -53,7 +55,7 @@ struct ItemsListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: retryCount) {
-            await viewModel.load()
+            await viewModel.loadIfNeeded()
         }
     }
 }

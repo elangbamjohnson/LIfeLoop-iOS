@@ -117,6 +117,35 @@ struct ItemsListViewModelTests {
         }
     }
 
+    @Test("Editing a title survives returning to the list")
+    func titleEditSurvivesReloadCheck() async {
+        let originalItem = makeItem()
+        let repository = StubItemRepository(
+            result: .success([originalItem])
+        )
+        let viewModel = ItemsListViewModel(
+            repository: repository
+        )
+
+        await viewModel.load()
+
+        var updatedItem = originalItem
+        updatedItem.title = "Pay electricity bill tomorrow"
+
+        viewModel.updateItem(updatedItem)
+        await viewModel.loadIfNeeded()
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state")
+            return
+        }
+
+        #expect(items.count == 1)
+        #expect(items.first?.title == updatedItem.title)
+        #expect(items.first?.id == originalItem.id)
+        #expect(items.first?.status == originalItem.status)
+    }
+
     private func makeItem() -> LifeItem {
         LifeItem(
             id: UUID(),

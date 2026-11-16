@@ -8,7 +8,15 @@
 import SwiftUI
 
 struct ItemDetailView: View {
-    let item: LifeItem
+    @State private var item: LifeItem
+    @State private var isEditing = false
+
+    let onSave: (LifeItem) -> Void
+
+    init(item: LifeItem, onSave: @escaping (LifeItem) -> Void) {
+        self.item = item
+        self.onSave = onSave
+    }
 
     var body: some View {
         Form {
@@ -18,6 +26,21 @@ struct ItemDetailView: View {
         }
         .navigationTitle("Item details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") {
+                    isEditing = true
+                }
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            NavigationStack {
+                ItemEditView(item: item) { updatedItem in
+                    item = updatedItem
+                    onSave(updatedItem)
+                }
+            }
+        }
     }
 }
 
@@ -28,7 +51,8 @@ struct ItemDetailView: View {
                 id: UUID(),
                 title: "Pay electricity bill",
                 status: .active
-            )
+            ),
+            onSave: { _ in }
         )
     }
 }

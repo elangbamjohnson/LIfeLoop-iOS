@@ -58,4 +58,29 @@ final class ItemsListViewModel {
             )
         }
     }
+
+    func updateItem(_ updatedItem: LifeItem) {
+        guard case .loaded(var items) = state else {
+            return
+        }
+
+        guard let index = items.firstIndex(where: {
+            $0.id == updatedItem.id
+        }) else {
+            return
+        }
+
+        items[index] = updatedItem
+        state = .loaded(items)
+    }
+
+    func loadIfNeeded() async {
+        switch state {
+        case .loaded, .empty:
+            return
+
+        case .idle, .loading, .failed:
+            await load()
+        }
+    }
 }
