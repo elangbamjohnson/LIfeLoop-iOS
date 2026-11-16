@@ -5,11 +5,13 @@
 //  Created by Johnson Elangbam on 14/11/26.
 //
 
+import Foundation
 import SwiftUI
 
 struct ItemsListView: View {
     let viewModel: ItemsListViewModel
 
+    @Binding var selectedItemID: UUID?
     @State private var retryCount = 0
 
     var body: some View {
@@ -19,12 +21,8 @@ struct ItemsListView: View {
                 ProgressView("Loading items…")
 
             case .loaded(let items):
-                List(items) { item in
-                    NavigationLink {
-                        ItemDetailView(item: item) { updatedItem in
-                            viewModel.updateItem(updatedItem)
-                        }
-                    } label: {
+                List(items, selection: $selectedItemID) { item in
+                    NavigationLink(value: item.id) {
                         ItemRowView(item: item)
                     }
                 }
