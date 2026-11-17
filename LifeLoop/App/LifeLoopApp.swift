@@ -6,28 +6,34 @@
 //
 
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct LifeLoopApp: App {
     @State private var composition = AppComposition()
     var body: some Scene {
         WindowGroup {
-            if let configuration = composition.configuration {
-                if configuration.environment == .demo {
-                    demoContent
-                } else if let services = composition.connected {
-                    AccountView(
-                        accountRepository: services.accountRepository,
-                        itemRepository: services.itemRepository,
-                        server: services.server, container: services.container
+            Group {
+                if let configuration = composition.configuration {
+                    if configuration.environment == .demo {
+                        demoContent
+                    } else if let services = composition.connected {
+                        AccountView(
+                            accountRepository: services.accountRepository,
+                            itemRepository: services.itemRepository,
+                            server: services.server, container: services.container
+                        )
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "Server not configured",
+                        systemImage: "network.slash",
+                        description: Text("This build needs a valid HTTPS server address before it can connect.")
                     )
                 }
-            } else {
-                ContentUnavailableView(
-                    "Server not configured",
-                    systemImage: "network.slash",
-                    description: Text("This build needs a valid HTTPS server address before it can connect.")
-                )
+            }
+            .onOpenURL { url in
+                GIDSignIn.sharedInstance.handle(url)
             }
         }
     }

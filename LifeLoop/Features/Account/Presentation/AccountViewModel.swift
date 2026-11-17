@@ -13,9 +13,13 @@ final class AccountViewModel {
     private(set) var isBusy = false
     private(set) var errorMessage: String?
     private let repository: any AccountRepository
+    private let googleIdentity: any GoogleIdentityProvider
     private var generation = 0
 
-    init(repository: any AccountRepository) { self.repository = repository }
+    init(repository: any AccountRepository, googleIdentity: any GoogleIdentityProvider) {
+        self.repository = repository
+        self.googleIdentity = googleIdentity
+    }
 
     func restore() async {
         guard case .restoring = state else { return }
@@ -34,7 +38,7 @@ final class AccountViewModel {
         }
     }
 
-    func signIn(email: String, password: String) async {
+    func signInWithGoogle() async {
         guard !isBusy else { return }
         generation += 1
         let currentGeneration = generation
@@ -42,20 +46,26 @@ final class AccountViewModel {
         errorMessage = nil
         defer { if currentGeneration == generation { isBusy = false } }
         do {
-            let account = try await repository.signIn(email: email, password: password)
+            let token = try await googleIdentity.signIn()
+            try Task.checkCancellation()
+            guard currentGeneration == generation else { return }
+            let account = try await repository.signIn(googleIDToken: token)
             try Task.checkCancellation()
             guard currentGeneration == generation else { return }
             state = .signedIn(account)
         } catch {
             guard currentGeneration == generation else { return }
             if error is CancellationError || Task.isCancelled { return }
-            errorMessage = (error as? APIError)?.errorDescription
-                ?? "Could not sign in. Check your connection and try again."
+            googleIdentity.signOut()
+            errorMessage = (error as? GoogleSignInFailure)?.errorDescription
+                ?? (error as? APIError)?.errorDescription
+                ?? "Could not sign in to LifeLoop. Please try again."
         }
     }
 
     func handleUnauthorized() {
         try? repository.signOut()
+        googleIdentity.signOut()
         isBusy = false
         state = .signedOut
         errorMessage = "Your session has expired. Please sign in again."
@@ -67,6 +77,7 @@ final class AccountViewModel {
         isBusy = false
         do {
             try repository.signOut()
+            googleIdentity.signOut()
             state = .signedOut
             errorMessage = nil
         } catch {

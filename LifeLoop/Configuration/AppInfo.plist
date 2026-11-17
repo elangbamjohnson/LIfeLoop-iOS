@@ -2,9 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>LifeLoopEnvironment</key>
-    <string>$(LIFELOOP_ENVIRONMENT)</string>
-    <key>LifeLoopAPIBaseURL</key>
-    <string>$(LIFELOOP_API_BASE_URL)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
+	<key>GIDServerClientID</key>
+	<string>$(GOOGLE_SERVER_CLIENT_ID)</string>
+	<key>LifeLoopAPIBaseURL</key>
+	<string>$(LIFELOOP_API_BASE_URL)</string>
+	<key>LifeLoopEnvironment</key>
+	<string>$(LIFELOOP_ENVIRONMENT)</string>
 </dict>
 </plist>

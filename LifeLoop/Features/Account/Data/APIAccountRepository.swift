@@ -5,14 +5,16 @@ final class APIAccountRepository: AccountRepository {
 
     init(client: APIClient) { self.client = client }
 
-    func signIn(email: String, password: String) async throws -> Account {
+    func signIn(googleIDToken: String) async throws -> Account {
+        guard !googleIDToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GoogleSignInFailure.missingToken
+        }
         try client.clearSession()
-        let body = try JSONEncoder().encode(LoginRequest(
-            email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-            password: password
+        let body = try JSONEncoder().encode(GoogleLoginRequest(
+            credential: googleIDToken, timezone: TimeZone.current.identifier
         ))
         let (data, response) = try await client.request(
-            "api/v1/auth/login", method: "POST", body: body, authenticated: false
+            "api/v1/auth/google", method: "POST", body: body, authenticated: false
         )
         let account = try decodeAccount(data)
         try client.saveSession(from: response, account: account)
@@ -44,6 +46,6 @@ final class APIAccountRepository: AccountRepository {
         return account
     }
 
-    private struct LoginRequest: Encodable { let email: String; let password: String }
+    private struct GoogleLoginRequest: Encodable { let credential: String; let timezone: String }
     private struct AccountResponse: Decodable { let user: Account }
 }

@@ -3,8 +3,7 @@ import SwiftData
 
 struct AccountView: View {
     @State private var viewModel: AccountViewModel
-    @State private var email = ""
-    @State private var password = ""
+    @State private var googleSignIn: GoogleSignInService
     @State private var signInTask: Task<Void, Never>?
     private let server: URL
     private let container: Result<ModelContainer, Error>
@@ -13,7 +12,9 @@ struct AccountView: View {
     init(accountRepository: any AccountRepository, itemRepository: any ItemRepository, server: URL, container: Result<ModelContainer, Error>) {
         self.server = server
         self.container = container
-        self.viewModel = AccountViewModel(repository: accountRepository)
+        let googleSignIn = GoogleSignInService()
+        self.googleSignIn = googleSignIn
+        self.viewModel = AccountViewModel(repository: accountRepository, googleIdentity: googleSignIn)
         self.itemRepository = itemRepository
     }
 
@@ -37,34 +38,11 @@ struct AccountView: View {
     }
 
     private var signInForm: some View {
-        NavigationStack {
-            Form {
-                Section("Your existing LifeLoop account") {
-                    TextField("Email", text: $email)
-                        .textContentType(.username)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Password", text: $password)
-                        .textContentType(.password)
-                }
-                Section {
-                    Button("Sign in") {
-                        signInTask = Task {
-                            await viewModel.signIn(email: email, password: password)
-                            if case .signedIn = viewModel.state { password = "" }
-                        }
-                    }
-                    .disabled(viewModel.isBusy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty)
-                    if viewModel.isBusy { ProgressView("Signing in…") }
-                    if let message = viewModel.errorMessage {
-                        Text(message).foregroundStyle(.red)
-                    }
-                } footer: {
-                    Text("Sign in with your existing LifeLoop account. Google sign-in and account recovery are coming soon.")
-                }
-            }
-            .navigationTitle("Sign in to LifeLoop")
+        GoogleSignInWelcomeView(isBusy: viewModel.isBusy, errorMessage: viewModel.errorMessage) {
+            signInTask = Task { await viewModel.signInWithGoogle() }
         }
+        .background(GooglePresentationAnchor { controller in
+            googleSignIn.presentingViewController = controller
+        })
     }
 }

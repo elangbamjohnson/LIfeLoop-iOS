@@ -46,7 +46,7 @@ enum APIError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized: "Please sign in again. Check your credentials and email verification."
+        case .unauthorized: "Your sign-in could not be verified. Please sign in again."
         case .forbidden: "Your account does not have access to this action."
         case .conflict: "This item has changed. Refresh it before trying again."
         case .rateLimited: "Too many attempts. Please wait before trying again."

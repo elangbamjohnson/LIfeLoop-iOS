@@ -7,26 +7,29 @@ struct APIContractTests {
     private let server = URL(string: "https://staging.example.com")!
     private let accountID = "00000000-0000-0000-0000-000000000099"
 
-    @Test func loginUsesExistingCookieContractAndNormalizesEmail() async throws {
+    @Test func googleLoginExchangesIDTokenForLifeLoopCookie() async throws {
         let transport = ContractTransport()
         let store = MemoryCredentials()
         let client = APIClient(baseURL: server, transport: transport, credentials: store)
         transport.handler = { request in
-            #expect(request.url?.path == "/api/v1/auth/login")
+            #expect(request.url?.path == "/api/v1/auth/google")
             #expect(request.httpMethod == "POST")
             #expect(request.value(forHTTPHeaderField: "Cookie") == nil)
             let body = try JSONDecoder().decode([String: String].self, from: #require(request.httpBody))
-            #expect(body["email"] == "reader@example.com")
-            #expect(body["password"] == " password with spaces ")
+            #expect(body["credential"] == "google-id-token")
+            #expect(body["timezone"] == TimeZone.current.identifier)
+            #expect(body["email"] == nil)
+            #expect(body["password"] == nil)
             return self.response(self.accountJSON, headers: [
                 "Set-Cookie": "session=test-token; Max-Age=604800; Path=/; HttpOnly; Secure; SameSite=None"
             ])
         }
         let account = try await APIAccountRepository(client: client).signIn(
-            email: " Reader@Example.com ", password: " password with spaces "
+            googleIDToken: "google-id-token"
         )
         #expect(account.id.uuidString.lowercased() == accountID)
         #expect(store.credential?.token == "test-token")
+        #expect(store.credential?.account == account)
     }
 
     @Test func inactiveAccountDoesNotPersistCookie() async throws {
@@ -38,7 +41,31 @@ struct APIContractTests {
             ])
         }
         let repository = APIAccountRepository(client: APIClient(baseURL: server, transport: transport, credentials: store))
-        await #expect(throws: APIError.self) { try await repository.signIn(email: "a", password: "b") }
+        await #expect(throws: APIError.self) { try await repository.signIn(googleIDToken: "google-id-token") }
+        #expect(store.credential == nil)
+    }
+
+    @Test func emptyGoogleTokenNeverReachesServer() async {
+        let transport = ContractTransport()
+        let repository = APIAccountRepository(client: APIClient(
+            baseURL: server, transport: transport, credentials: MemoryCredentials()
+        ))
+        await #expect(throws: GoogleSignInFailure.self) {
+            try await repository.signIn(googleIDToken: "   ")
+        }
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test func googleLoginWithoutSessionCookieDoesNotSignIn() async {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        transport.handler = { _ in self.response(self.accountJSON) }
+        let repository = APIAccountRepository(client: APIClient(
+            baseURL: server, transport: transport, credentials: store
+        ))
+        await #expect(throws: APIError.invalidResponse) {
+            try await repository.signIn(googleIDToken: "google-id-token")
+        }
         #expect(store.credential == nil)
     }
 
@@ -71,7 +98,7 @@ struct APIContractTests {
         transport.handler = { _ in self.response("private server detail", status: status) }
         let client = APIClient(baseURL: server, transport: transport, credentials: MemoryCredentials())
         await #expect(throws: APIError.self) {
-            try await client.request("api/v1/auth/login", authenticated: false)
+            try await client.request("api/v1/auth/google", authenticated: false)
         }
     }
 

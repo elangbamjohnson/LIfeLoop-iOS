@@ -1,3 +1,8 @@
-// Fill in only when staging exists. A URL is configuration, never a secret.
+// Connected server for manual testing. CI runs Debug tests with fake services.
 LIFELOOP_ENVIRONMENT = staging
-LIFELOOP_API_BASE_URL =
+LIFELOOP_API_BASE_URL = https:/$()/lifeloop-45xr.onrender.com
+
+// Public OAuth identifiers from Google Cloud. Never add a client secret.
+GOOGLE_IOS_CLIENT_ID = 918693134258-r8dmdg9a4m4u6ma9r9r94u2ohrpdg2u9.apps.googleusercontent.com
+GOOGLE_SERVER_CLIENT_ID = 918693134258-780b62bd216i9qkapv6co33ddl5a0vld.apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.918693134258-r8dmdg9a4m4u6ma9r9r94u2ohrpdg2u9

@@ -7,7 +7,9 @@ if [[ -z "${SIMULATOR_ID:-}" ]]; then
 import json, sys
 family = sys.argv[1]
 data = json.load(sys.stdin)
-for runtime, devices in sorted(data["devices"].items(), reverse=True):
+def runtime_version(entry):
+    return tuple(int(part) for part in entry[0].rsplit("iOS-", 1)[-1].split("-") if part.isdigit())
+for runtime, devices in sorted(data["devices"].items(), key=runtime_version, reverse=True):
     if ".iOS-" not in runtime:
         continue
     for device in devices:
@@ -25,4 +27,5 @@ xcodebuild \
     -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
     -derivedDataPath "${DERIVED_DATA_PATH:-/tmp/lifeloop-derived-data}" \
     -parallel-testing-enabled NO \
+    -onlyUsePackageVersionsFromResolvedFile \
     CODE_SIGNING_ALLOWED=NO test

@@ -10,6 +10,8 @@
 		2300557030A81C97002EEF8D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2300556F30A81C97002EEF8D /* Assets.xcassets */; };
 		427ED829E090BFE428DBAEFD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5CDD2B881AD77FA0FA8AA658 /* Foundation.framework */; };
 		51B510D8DC9159AE6AFBD5C3 /* OrganizerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BECB7F23C0B93250FA9FB3 /* OrganizerUITests.swift */; };
+		D454202D6244A28C329F86C8 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 15319382503A8EC2B1E35BB2 /* GoogleSignIn */; };
+		FC187061BB7C40CFAA383315 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C02BFAEC07CA028B9FDAED9B /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +67,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D454202D6244A28C329F86C8 /* GoogleSignIn in Frameworks */,
+				FC187061BB7C40CFAA383315 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -165,6 +169,10 @@
 				2300557630A82F89002EEF8D /* Features */,
 			);
 			name = LifeLoop;
+			packageProductDependencies = (
+				15319382503A8EC2B1E35BB2 /* GoogleSignIn */,
+				C02BFAEC07CA028B9FDAED9B /* GoogleSignInSwift */,
+			);
 			productName = LifeLoop;
 			productReference = 2300556830A81C96002EEF8D /* LifeLoop.app */;
 			productType = "com.apple.product-type.application";
@@ -236,6 +244,9 @@
 			);
 			mainGroup = 2300555F30A81C96002EEF8D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				262AD3F63A65AE41AD9C76EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2300556930A81C96002EEF8D /* Products */;
 			projectDirPath = "";
@@ -321,6 +332,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A2CQ49GHDC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Configuration/AppInfo.plist;
@@ -335,7 +347,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.personal.LifeLoop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnson.LifeLoop;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -474,6 +486,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A2CQ49GHDC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Configuration/AppInfo.plist;
@@ -488,7 +501,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.personal.LifeLoop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnson.LifeLoop;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -508,6 +521,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A2CQ49GHDC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Configuration/AppInfo.plist;
@@ -522,7 +536,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.personal.LifeLoop;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnson.LifeLoop;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -540,10 +554,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A2CQ49GHDC;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.personal.LifeLoopTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnson.LifeLoopTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -561,10 +576,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A2CQ49GHDC;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.personal.LifeLoopTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnson.LifeLoopTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -661,10 +677,11 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A2CQ49GHDC;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.personal.LifeLoopTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnson.LifeLoopTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -753,6 +770,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		262AD3F63A65AE41AD9C76EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = exactVersion;
+				version = 9.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		15319382503A8EC2B1E35BB2 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 262AD3F63A65AE41AD9C76EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		C02BFAEC07CA028B9FDAED9B /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 262AD3F63A65AE41AD9C76EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2300556030A81C96002EEF8D /* Project object */;
 }

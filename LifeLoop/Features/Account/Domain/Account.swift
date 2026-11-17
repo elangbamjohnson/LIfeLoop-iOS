@@ -9,7 +9,7 @@ struct Account: Codable, Equatable {
 
 @MainActor
 protocol AccountRepository {
-    func signIn(email: String, password: String) async throws -> Account
+    func signIn(googleIDToken: String) async throws -> Account
     func currentAccount() async throws -> Account
     func signOut() throws
 }
