@@ -146,6 +146,118 @@ struct ItemsListViewModelTests {
         #expect(items.first?.status == originalItem.status)
     }
 
+    @Test("forceLoad refetches even when already loaded")
+    func forceLoadRefetchesEvenWhenLoaded() async {
+        let firstItem = makeItem()
+        let repository = StubItemRepository(result: .success([firstItem]))
+        let viewModel = ItemsListViewModel(repository: repository)
+
+        await viewModel.load()
+
+        guard case .loaded(let firstItems) = viewModel.state else {
+            Issue.record("Expected loaded state after first load")
+            return
+        }
+        #expect(firstItems.count == 1)
+        #expect(firstItems.first?.id == firstItem.id)
+
+        let secondItem = makeItem()
+        repository.result = .success([secondItem])
+
+        await viewModel.forceLoad()
+
+        guard case .loaded(let secondItems) = viewModel.state else {
+            Issue.record("Expected loaded state after forceLoad")
+            return
+        }
+        #expect(secondItems.count == 1)
+        #expect(secondItems.first?.id == secondItem.id)
+    }
+
+    @Test("saveTitle updates item title and revision in state")
+    func saveTitleUpdatesItemInState() async throws {
+        let item = makeItem()
+        let repository = StubItemRepository(result: .success([item]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        let updated = try await viewModel.saveTitle(for: item, newTitle: "Updated title")
+        #expect(updated.title == "Updated title")
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state")
+            return
+        }
+        #expect(items.first?.title == "Updated title")
+    }
+
+    @Test("completeItem moves item to completed status")
+    func completeItemUpdatesStatus() async {
+        let item = makeItem()
+        let repository = StubItemRepository(result: .success([item]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.completeItem(item)
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state")
+            return
+        }
+        #expect(items.first?.status == .completed)
+    }
+
+    @Test("reopenItem restores active status")
+    func reopenItemUpdatesStatus() async {
+        var item = makeItem()
+        item.status = .completed
+        let repository = StubItemRepository(result: .success([item]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.reopenItem(item)
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state")
+            return
+        }
+        #expect(items.first?.status == .active)
+    }
+
+    @Test("deleteItem removes item after acknowledgement")
+    func deleteItemRemovesFromList() async {
+        let item = makeItem()
+        let repository = StubItemRepository(result: .success([item]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.deleteItem(item)
+
+        guard case .empty = viewModel.state else {
+            Issue.record("Expected empty state after deleting the only item")
+            return
+        }
+    }
+
+    @Test("deleteItem preserves items on failure")
+    func deleteItemRollbackOnFailure() async {
+        let item = makeItem()
+        let repository = StubItemRepository(result: .success([item]))
+        repository.deleteResult = .failure(StubError.unavailable)
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.deleteItem(item)
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state after rollback")
+            return
+        }
+        #expect(items.count == 1)
+        #expect(items.first?.id == item.id)
+        #expect(viewModel.actionError != nil)
+    }
+
     private func makeItem() -> LifeItem {
         LifeItem(
             id: UUID(),
@@ -158,6 +270,10 @@ struct ItemsListViewModelTests {
 @MainActor
 private final class StubItemRepository: ItemRepository {
     var result: Result<[LifeItem], Error>
+    var updateResult: Result<LifeItem, Error>?
+    var completeResult: Result<LifeItem, Error>?
+    var reopenResult: Result<LifeItem, Error>?
+    var deleteResult: Result<Void, Error>?
 
     init(result: Result<[LifeItem], Error>) {
         self.result = result
@@ -165,6 +281,29 @@ private final class StubItemRepository: ItemRepository {
 
     func fetchItems() async throws -> [LifeItem] {
         try result.get()
+    }
+
+    func createItem(title: String, itemType: String) async throws -> LifeItem {
+        LifeItem(id: UUID(), title: title, status: .active)
+    }
+
+    func updateItem(id: UUID, title: String, updatedAt: String?) async throws -> LifeItem {
+        if let updateResult { return try updateResult.get() }
+        return LifeItem(id: id, title: title, status: .active, updatedAt: updatedAt)
+    }
+
+    func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
+        if let completeResult { return try completeResult.get() }
+        return LifeItem(id: id, title: "Completed", status: .completed, updatedAt: updatedAt)
+    }
+
+    func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
+        if let reopenResult { return try reopenResult.get() }
+        return LifeItem(id: id, title: "Reopened", status: .active, updatedAt: updatedAt)
+    }
+
+    func deleteItem(id: UUID, updatedAt: String?) async throws {
+        if let deleteResult { try deleteResult.get() }
     }
 }
 

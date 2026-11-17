@@ -1,11 +1,16 @@
-//
-//  ItemRepository.swift
-//  LifeLoop
-//
-//  Created by Johnson Elangbam on 14/11/26.
-//
+import Foundation
 
 @MainActor
 protocol ItemRepository {
+    var cacheDate: Date? { get }
     func fetchItems() async throws -> [LifeItem]
+    func createItem(title: String, itemType: String) async throws -> LifeItem
+    func updateItem(id: UUID, title: String, updatedAt: String?) async throws -> LifeItem
+    func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem
+    func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem
+    func deleteItem(id: UUID, updatedAt: String?) async throws
+}
+
+extension ItemRepository {
+    var cacheDate: Date? { nil }
 }

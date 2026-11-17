@@ -7,8 +7,12 @@
 
 import Foundation
 
-struct LifeItem: Identifiable {
+struct LifeItem: Identifiable, Codable {
     let id: UUID
     var title: String
     var status: ItemStatus
+    var itemType: String = "task"
+    var dueDate: Date?
+    var metadata: [String: JSONValue] = [:]
+    var updatedAt: String?
 }
