@@ -69,6 +69,40 @@ struct APIContractTests {
         #expect(store.credential == nil)
     }
 
+    @Test func sessionCookieWithoutExpiryIsRejected() async {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        transport.handler = { _ in
+            self.response(self.accountJSON, headers: [
+                "Set-Cookie": "session=test-token; Path=/; Secure"
+            ])
+        }
+        let repository = APIAccountRepository(client: APIClient(
+            baseURL: server, transport: transport, credentials: store
+        ))
+        await #expect(throws: APIError.invalidResponse) {
+            try await repository.signIn(googleIDToken: "google-id-token")
+        }
+        #expect(store.credential == nil)
+    }
+
+    @Test func expiredSessionCookieIsRejected() async {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        transport.handler = { _ in
+            self.response(self.accountJSON, headers: [
+                "Set-Cookie": "session=test-token; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure"
+            ])
+        }
+        let repository = APIAccountRepository(client: APIClient(
+            baseURL: server, transport: transport, credentials: store
+        ))
+        await #expect(throws: APIError.invalidResponse) {
+            try await repository.signIn(googleIDToken: "google-id-token")
+        }
+        #expect(store.credential == nil)
+    }
+
     @Test func expiredCredentialsNeverReachTransport() async throws {
         let transport = ContractTransport()
         let store = MemoryCredentials()
