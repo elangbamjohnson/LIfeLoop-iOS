@@ -9,8 +9,13 @@ import SwiftUI
 
 struct ItemDetailView: View {
     let item: LifeItem
-    var allowsEditing = true
+    var capabilities: OrganizerCapabilities = .demo
     let onEdit: () -> Void
+
+    var allowsEditing: Bool {
+        get { capabilities.allowsTitleEditing }
+        set { capabilities = OrganizerCapabilities(allowsEditing: newValue) }
+    }
 
     var body: some View {
         Form {
@@ -48,7 +53,7 @@ struct ItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if allowsEditing {
+                if capabilities.allowsTitleEditing {
                     Button("Edit", action: onEdit)
                         .accessibilityIdentifier("editItem")
                 }

@@ -84,11 +84,14 @@ final class ItemsListViewModel {
     }
 
     func saveTitle(for item: LifeItem, newTitle: String) async throws -> LifeItem {
-        guard case .loaded = state, !mutatingItemIDs.contains(item.id) else { throw APIError.conflict }
+        guard case .loaded = state, !mutatingItemIDs.contains(item.id) else { throw ItemMutationError.conflict }
+        guard let revision = item.revision, revision > 0 else {
+            throw ItemMutationError.invalidRevision
+        }
         mutatingItemIDs.insert(item.id)
         defer { mutatingItemIDs.remove(item.id) }
 
-        let updated = try await repository.updateItem(id: item.id, title: newTitle, updatedAt: item.updatedAt)
+        let updated = try await repository.updateItem(id: item.id, title: newTitle, expectedRevision: revision)
         updateItem(updated)
         return updated
     }

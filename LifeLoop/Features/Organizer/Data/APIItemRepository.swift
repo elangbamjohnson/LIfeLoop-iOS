@@ -12,21 +12,55 @@ final class APIItemRepository: ItemRepository {
 
     // Do not send mutations until the server enforces revision preconditions.
     func createItem(title: String, itemType: String) async throws -> LifeItem {
-        throw MutationError.notAvailable
+        throw ItemMutationError.notAvailable
     }
-    func updateItem(id: UUID, title: String, updatedAt: String?) async throws -> LifeItem {
-        throw MutationError.notAvailable
+    func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem {
+        guard expectedRevision > 0 else {
+            throw ItemMutationError.invalidRevision
+        }
+        let payload = UpdateItemTitleRequest(title: title, expectedRevision: expectedRevision)
+        let body = try JSONEncoder().encode(payload)
+        let data: Data
+        do {
+            let (responseData, _) = try await client.request(
+                "api/v1/items/\(id.uuidString.lowercased())",
+                method: "PATCH",
+                body: body,
+                authenticated: true
+            )
+            data = responseData
+        } catch APIError.conflict {
+            throw ItemMutationError.conflict
+        }
+        let response: ItemResponse
+        do {
+            response = try JSONDecoder().decode(ItemResponse.self, from: data)
+        } catch {
+            throw APIError.invalidResponse
+        }
+        let canonicalItem: LifeItem
+        do {
+            canonicalItem = try response.item.domainValue()
+        } catch {
+            throw APIError.invalidResponse
+        }
+        guard canonicalItem.id == id,
+              let canonicalRevision = canonicalItem.revision,
+              canonicalRevision > expectedRevision else {
+            throw APIError.invalidResponse
+        }
+        return canonicalItem
     }
     func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
-        throw MutationError.notAvailable
+        throw ItemMutationError.notAvailable
     }
     func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
-        throw MutationError.notAvailable
+        throw ItemMutationError.notAvailable
     }
     func deleteItem(id: UUID, updatedAt: String?) async throws {
-        throw MutationError.notAvailable
+        throw ItemMutationError.notAvailable
     }
-    enum MutationError: Error { case notAvailable }
+    typealias MutationError = ItemMutationError
 
 }
 
@@ -46,6 +80,7 @@ struct ItemDTO: Decodable {
     let dueDate: String?
     let metadata: [String: JSONValue]?
     let updatedAt: String?
+    let revision: Int?
 
     func domainValue() throws -> LifeItem {
         let mappedStatus: ItemStatus
@@ -70,7 +105,8 @@ struct ItemDTO: Decodable {
         }
         return LifeItem(
             id: id, title: title, status: mappedStatus, itemType: itemType,
-            dueDate: date, metadata: metadata ?? [:], updatedAt: updatedAt
+            dueDate: date, metadata: metadata ?? [:], updatedAt: updatedAt,
+            revision: revision
         )
     }
 }

@@ -9,7 +9,7 @@ import Foundation
 import SwiftUI
 
 struct RootView: View {
-    let allowsEditing: Bool
+    let capabilities: OrganizerCapabilities
     let localStore: AccountLocalStore?
     let onSessionExpired: () -> Void
     @State private var viewModel: ItemsListViewModel
@@ -17,24 +17,47 @@ struct RootView: View {
     // The root outlives adaptive column changes, so it owns the active editor.
     @State private var editingItem: LifeItem?
 
-    init(repository: any ItemRepository, allowsEditing: Bool = true, localStore: AccountLocalStore? = nil, onSessionExpired: @escaping () -> Void = {}) {
+    var allowsEditing: Bool {
+        capabilities.allowsTitleEditing || capabilities.allowsItemMutations
+    }
+
+    init(
+        repository: any ItemRepository,
+        capabilities: OrganizerCapabilities = .demo,
+        localStore: AccountLocalStore? = nil,
+        onSessionExpired: @escaping () -> Void = {}
+    ) {
+        self.capabilities = capabilities
         self.localStore = localStore
         self.onSessionExpired = onSessionExpired
-        self.allowsEditing = allowsEditing
         self.viewModel = ItemsListViewModel(repository: repository)
+    }
+
+    init(
+        repository: any ItemRepository,
+        allowsEditing: Bool,
+        localStore: AccountLocalStore? = nil,
+        onSessionExpired: @escaping () -> Void = {}
+    ) {
+        self.init(
+            repository: repository,
+            capabilities: allowsEditing ? .demo : .none,
+            localStore: localStore,
+            onSessionExpired: onSessionExpired
+        )
     }
 
     var body: some View {
         NavigationSplitView {
             ItemsListView(
                 viewModel: viewModel,
-                allowsEditing: allowsEditing,
+                capabilities: capabilities,
                 selectedItemID: $selectedItemID
             )
             .navigationTitle("LifeLoop")
         } detail: {
             if let item = selectedItem {
-                ItemDetailView(item: item, allowsEditing: allowsEditing) {
+                ItemDetailView(item: item, capabilities: capabilities) {
                     editingItem = item
                 }
             } else {
@@ -59,9 +82,21 @@ struct RootView: View {
         }
         .fullScreenCover(item: $editingItem) { item in
             NavigationStack {
-                ItemEditView(item: item, localStore: localStore) { updatedItem in
-                    _ = try await viewModel.saveTitle(for: item, newTitle: updatedItem.title)
-                }
+                ItemEditView(
+                    item: item,
+                    localStore: localStore,
+                    onSave: { updatedItem in
+                        _ = try await viewModel.saveTitle(for: updatedItem, newTitle: updatedItem.title)
+                    },
+                    onReload: {
+                        await viewModel.forceLoad()
+                        if case .loaded(let items) = viewModel.state,
+                           let reloaded = items.first(where: { $0.id == item.id }) {
+                            return reloaded
+                        }
+                        return item
+                    }
+                )
             }
         }
     }

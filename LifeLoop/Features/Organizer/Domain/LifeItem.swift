@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct LifeItem: Identifiable, Codable {
+struct LifeItem: Identifiable, Codable, Equatable {
     let id: UUID
     var title: String
     var status: ItemStatus
@@ -15,4 +15,5 @@ struct LifeItem: Identifiable, Codable {
     var dueDate: Date?
     var metadata: [String: JSONValue] = [:]
     var updatedAt: String?
+    var revision: Int?
 }

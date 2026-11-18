@@ -5,9 +5,9 @@ struct CreateItemRequest: Encodable {
     let itemType: String
 }
 
-struct UpdateItemRequest: Encodable {
+struct UpdateItemTitleRequest: Encodable {
     let title: String
-    let updatedAt: String?
+    let expectedRevision: Int
 }
 
 /// Used for complete/reopen/delete endpoints where the only optional field is updatedAt.

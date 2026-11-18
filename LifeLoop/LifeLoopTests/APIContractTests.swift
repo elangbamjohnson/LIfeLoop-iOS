@@ -172,21 +172,211 @@ struct APIContractTests {
 
     // MARK: - P2 Mutation Contract Tests
 
-    @Test(arguments: 0..<5)
-    func unverifiedMutationsNeverReachServer(operation: Int) async {
+    @Test func decodingItemWithRevision() throws {
+        let payload = """
+        {"items":[{"id":"00000000-0000-0000-0000-000000000001",
+        "title":"Versioned item","status":"active","itemType":"task",
+        "dueDate":null,"metadata":null,"revision":4,"updatedAt":"2026-11-17T20:00:00.000Z"}]}
+        """
+        let item = try JSONDecoder().decode(ItemListResponse.self, from: Data(payload.utf8)).items[0].domainValue()
+        #expect(item.revision == 4)
+        #expect(item.updatedAt == "2026-11-17T20:00:00.000Z")
+    }
+
+    @Test func decodingServerResponseWithoutRevision() throws {
+        let payload = """
+        {"items":[{"id":"00000000-0000-0000-0000-000000000001",
+        "title":"Legacy server item","status":"active","itemType":"task",
+        "updatedAt":"2026-11-14T00:00:00.000Z"}]}
+        """
+        let item = try JSONDecoder().decode(ItemListResponse.self, from: Data(payload.utf8)).items[0].domainValue()
+        #expect(item.revision == nil)
+        #expect(item.updatedAt == "2026-11-14T00:00:00.000Z")
+    }
+
+    @Test func decodingLegacyCachedJSONWithoutRevision() throws {
+        let payload = """
+        {"id":"00000000-0000-0000-0000-000000000001",
+        "title":"Legacy cached item","status":{"active":{}},"itemType":"task",
+        "metadata":{},"updatedAt":"2026-11-14T00:00:00.000Z"}
+        """
+        let item = try JSONDecoder().decode(LifeItem.self, from: Data(payload.utf8))
+        #expect(item.revision == nil)
+        #expect(item.status == .active)
+        #expect(item.updatedAt == "2026-11-14T00:00:00.000Z")
+    }
+
+    @Test(arguments: 0..<4)
+    func otherConnectedMutationsMakeNoNetworkRequests(operation: Int) async {
         let transport = ContractTransport()
         let client = APIClient(baseURL: server, transport: transport, credentials: MemoryCredentials())
         let repository = APIItemRepository(client: client)
-        await #expect(throws: APIItemRepository.MutationError.self) {
+        await #expect(throws: ItemMutationError.notAvailable) {
             switch operation {
             case 0: _ = try await repository.createItem(title: "New", itemType: "task")
-            case 1: _ = try await repository.updateItem(id: UUID(), title: "Changed", updatedAt: "revision")
-            case 2: _ = try await repository.completeItem(id: UUID(), updatedAt: "revision")
-            case 3: _ = try await repository.reopenItem(id: UUID(), updatedAt: "revision")
+            case 1: _ = try await repository.completeItem(id: UUID(), updatedAt: "revision")
+            case 2: _ = try await repository.reopenItem(id: UUID(), updatedAt: "revision")
             default: try await repository.deleteItem(id: UUID(), updatedAt: "revision")
             }
         }
         #expect(transport.requests.isEmpty)
+    }
+
+    @Test func titlePatchSendsCorrectMethodPathAndExactBody() async throws {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "PATCH")
+            #expect(request.url?.path == "/api/v1/items/\(itemID.uuidString.lowercased())")
+            #expect(request.value(forHTTPHeaderField: "Cookie") == "session=test-token")
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+            let httpBody = try #require(request.httpBody)
+            let bodyJSON = try #require(try JSONSerialization.jsonObject(with: httpBody) as? [String: Any])
+            #expect(bodyJSON["title"] as? String == "Updated Title")
+            #expect(bodyJSON["expectedRevision"] as? Int == 3)
+            #expect(bodyJSON.count == 2)
+            #expect(bodyJSON["updatedAt"] == nil)
+            #expect(bodyJSON["metadata"] == nil)
+            #expect(bodyJSON["status"] == nil)
+            #expect(bodyJSON["dueDate"] == nil)
+            #expect(bodyJSON["itemType"] == nil)
+            return self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Updated Title",
+            "status":"active","itemType":"task","dueDate":null,"metadata":{"userEdited":true},
+            "revision":4,"updatedAt":"2026-11-17T20:30:00.000Z"}}
+            """)
+        }
+
+        let updated = try await repository.updateItem(id: itemID, title: "Updated Title", expectedRevision: 3)
+        #expect(updated.id == itemID)
+        #expect(updated.title == "Updated Title")
+        #expect(updated.revision == 4)
+        #expect(updated.updatedAt == "2026-11-17T20:30:00.000Z")
+        #expect(updated.metadata["userEdited"] == .bool(true))
+    }
+
+    @Test(arguments: [0, -1, -5])
+    func titlePatchRejectsInvalidRevisionBeforeNetworkRequest(revision: Int) async {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        await #expect(throws: ItemMutationError.invalidRevision) {
+            try await repository.updateItem(id: UUID(), title: "Title", expectedRevision: revision)
+        }
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test func titlePatchRejectsMalformedSuccessResponse() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in self.response("{\"item\":{}}") }
+        await #expect(throws: APIError.invalidResponse) {
+            try await repository.updateItem(id: itemID, title: "Title", expectedRevision: 1)
+        }
+    }
+
+    @Test func titlePatchRejectsMismatchedIDSuccessResponse() async {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let differentID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in
+            self.response("""
+            {"item":{"id":"\(differentID.uuidString.lowercased())","title":"Title",
+            "status":"active","itemType":"task","revision":2,"updatedAt":"now"}}
+            """)
+        }
+        await #expect(throws: APIError.invalidResponse) {
+            try await repository.updateItem(id: itemID, title: "Title", expectedRevision: 1)
+        }
+    }
+
+    @Test func titlePatchRejectsNonAdvancingRevisionSuccessResponse() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in
+            self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Title",
+            "status":"active","itemType":"task","revision":1,"updatedAt":"now"}}
+            """)
+        }
+        await #expect(throws: APIError.invalidResponse) {
+            try await repository.updateItem(id: itemID, title: "Title", expectedRevision: 1)
+        }
+    }
+
+    @Test func titlePatchPropagatesHTTP409WithoutAutomaticRetry() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in
+            self.response("""
+            {"error":"Item has been modified by another session","code":"REVISION_CONFLICT","currentRevision":5}
+            """, status: 409)
+        }
+        let error = await #expect(throws: ItemMutationError.self) {
+            try await repository.updateItem(id: itemID, title: "Title", expectedRevision: 2)
+        }
+        #expect(error == .conflict)
+        #expect(transport.requests.count == 1)
+    }
+
+    @Test func titlePatchPropagatesAuthenticationError() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in self.response("{\"error\":\"Unauthorized\"}", status: 401) }
+        let error = await #expect(throws: APIError.self) {
+            try await repository.updateItem(id: itemID, title: "Title", expectedRevision: 1)
+        }
+        #expect(error == .unauthorized)
+        #expect(transport.requests.count == 1)
+    }
+
+    @Test func titlePatchPropagatesNetworkErrorWithoutBlindRetry() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in throw URLError(.networkConnectionLost) }
+        await #expect(throws: URLError.self) {
+            try await repository.updateItem(id: itemID, title: "Title", expectedRevision: 1)
+        }
+        #expect(transport.requests.count == 1)
     }
 
     @Test func conflictResponseThrowsAPIErrorConflict() async throws {
@@ -221,6 +411,69 @@ struct APIContractTests {
         let repository = APIAccountRepository(client: APIClient(baseURL: server, transport: transport, credentials: store))
         await #expect(throws: APIError.self) { try await repository.currentAccount() }
         #expect(store.credential == nil)
+    }
+
+    @Test func organizerCapabilitiesSeparation() {
+        let none = OrganizerCapabilities.none
+        #expect(!none.allowsTitleEditing)
+        #expect(!none.allowsItemMutations)
+
+        let titleOnly = OrganizerCapabilities.titleOnly
+        #expect(titleOnly.allowsTitleEditing)
+        #expect(!titleOnly.allowsItemMutations)
+
+        let demo = OrganizerCapabilities.demo
+        #expect(demo.allowsTitleEditing)
+        #expect(demo.allowsItemMutations)
+
+        let legacyDisabled = OrganizerCapabilities(allowsEditing: false)
+        #expect(!legacyDisabled.allowsTitleEditing)
+        #expect(!legacyDisabled.allowsItemMutations)
+
+        let legacyEnabled = OrganizerCapabilities(allowsEditing: true)
+        #expect(legacyEnabled.allowsTitleEditing)
+        #expect(legacyEnabled.allowsItemMutations)
+    }
+
+    @Test func draftPersistencePreservesIntegerRevisionAndLegacyJSON() throws {
+        let draft = ItemDraft(title: "New Draft", baseRevision: "2026-11-14T00:00:00.000Z", baseItemRevision: 4)
+        let encoded = try JSONEncoder().encode(draft)
+        let decoded = try JSONDecoder().decode(ItemDraft.self, from: encoded)
+        #expect(decoded.title == "New Draft")
+        #expect(decoded.baseItemRevision == 4)
+        #expect(decoded.baseRevision == "2026-11-14T00:00:00.000Z")
+
+        // Legacy draft without baseItemRevision must decode without error and leave baseItemRevision nil
+        let legacyJSON = "{\"title\":\"Legacy\",\"baseRevision\":\"2026-11-14T00:00:00.000Z\"}".data(using: .utf8)!
+        let legacyDecoded = try JSONDecoder().decode(ItemDraft.self, from: legacyJSON)
+        #expect(legacyDecoded.title == "Legacy")
+        #expect(legacyDecoded.baseRevision == "2026-11-14T00:00:00.000Z")
+        #expect(legacyDecoded.baseItemRevision == nil)
+    }
+
+    @Test func accountLocalStoreDraftScopingAndPurge() throws {
+        let container = try AccountLocalStore.makeContainer(inMemory: true)
+        let accountA = UUID()
+        let accountB = UUID()
+        let itemID = UUID()
+
+        let storeA = AccountLocalStore(container: container, server: server, accountID: accountA)
+        let storeB = AccountLocalStore(container: container, server: server, accountID: accountB)
+
+        let draft = ItemDraft(title: "Account A Draft", baseItemRevision: 3)
+        try storeA.saveDraft(draft, itemID: itemID)
+
+        #expect(try storeA.draft(itemID: itemID)?.title == "Account A Draft")
+        #expect(try storeA.draft(itemID: itemID)?.baseItemRevision == 3)
+        // Store B must never see Store A's draft
+        #expect(try storeB.draft(itemID: itemID) == nil)
+
+        // Purging store A cleans up and invalidates
+        try storeA.purgeAndInvalidate()
+        #expect(throws: CancellationError.self) {
+            _ = try storeA.draft(itemID: itemID)
+        }
+        #expect(try storeB.draft(itemID: itemID) == nil)
     }
 
     private var accountJSON: String {
