@@ -20,7 +20,7 @@ struct ConnectedOrganizerView: View {
         Group {
             switch store {
             case .success(let local):
-                RootView(repository: CachedItemRepository(remote: remote, store: local), allowsEditing: false,
+                RootView(repository: CachedItemRepository(remote: remote, store: local), capabilities: .titleOnly,
                          localStore: local, onSessionExpired: onSessionExpired)
                     .safeAreaInset(edge: .bottom) {
                         Button("Sign out and remove local data") {

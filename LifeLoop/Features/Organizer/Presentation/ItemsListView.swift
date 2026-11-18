@@ -10,7 +10,12 @@ import SwiftUI
 
 struct ItemsListView: View {
   let viewModel: ItemsListViewModel
-  var allowsEditing = true
+  var capabilities: OrganizerCapabilities = .demo
+
+  var allowsEditing: Bool {
+    get { capabilities.allowsItemMutations }
+    set { capabilities = OrganizerCapabilities(allowsEditing: newValue) }
+  }
 
   @Binding var selectedItemID: UUID?
   @State private var retryCount = 0
@@ -34,7 +39,7 @@ struct ItemsListView: View {
           }
           .accessibilityIdentifier("item-\(item.id.uuidString)")
           .swipeActions(edge: .leading) {
-            if allowsEditing {
+            if capabilities.allowsItemMutations {
               if item.status == .completed {
                 Button {
                   Task { await viewModel.reopenItem(item) }
@@ -53,7 +58,7 @@ struct ItemsListView: View {
             }
           }
           .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if allowsEditing {
+            if capabilities.allowsItemMutations {
               Button(role: .destructive) {
                 itemToDelete = item
                 showDeleteConfirmation = true
@@ -63,7 +68,7 @@ struct ItemsListView: View {
             }
           }
           .contextMenu {
-            if allowsEditing {
+            if capabilities.allowsItemMutations {
               if item.status == .completed {
                 Button {
                   Task { await viewModel.reopenItem(item) }

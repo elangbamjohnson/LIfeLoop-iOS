@@ -16,9 +16,36 @@ final class LocalRecord {
     }
 }
 
-struct ItemDraft: Codable {
+struct ItemDraft: Codable, Equatable {
     let title: String
     let baseRevision: String?
+    let baseItemRevision: Int?
+
+    init(title: String, baseRevision: String? = nil, baseItemRevision: Int? = nil) {
+        self.title = title
+        self.baseRevision = baseRevision
+        self.baseItemRevision = baseItemRevision
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case baseRevision
+        case baseItemRevision
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.baseRevision = try container.decodeIfPresent(String.self, forKey: .baseRevision)
+        self.baseItemRevision = try container.decodeIfPresent(Int.self, forKey: .baseItemRevision)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(baseRevision, forKey: .baseRevision)
+        try container.encodeIfPresent(baseItemRevision, forKey: .baseItemRevision)
+    }
 }
 
 /// Every query includes both the server and account identity. Shared items are never cached here.
@@ -46,6 +73,15 @@ final class AccountLocalStore {
     }
 
     func saveItems(_ items: [LifeItem]) throws { try write(items, name: "items") }
+
+    func updateItem(_ updatedItem: LifeItem) throws {
+        guard let snapshot = try readItems() else { return }
+        var items = snapshot.items
+        if let index = items.firstIndex(where: { $0.id == updatedItem.id }) {
+            items[index] = updatedItem
+            try write(items, name: "items")
+        }
+    }
 
     func readItems() throws -> (items: [LifeItem], date: Date)? {
         guard let record = try record("items") else { return nil }

@@ -183,12 +183,30 @@ struct ItemsListViewModelTests {
 
         let updated = try await viewModel.saveTitle(for: item, newTitle: "Updated title")
         #expect(updated.title == "Updated title")
+        #expect(updated.revision == 2)
 
         guard case .loaded(let items) = viewModel.state else {
             Issue.record("Expected loaded state")
             return
         }
         #expect(items.first?.title == "Updated title")
+        #expect(items.first?.revision == 2)
+    }
+
+    @Test("saveTitle rejects item without positive revision")
+    func saveTitleRejectsMissingOrInvalidRevision() async throws {
+        let itemWithoutRev = makeItem(revision: nil)
+        let itemWithZeroRev = makeItem(revision: 0)
+        let repository = StubItemRepository(result: .success([itemWithoutRev, itemWithZeroRev]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await #expect(throws: ItemMutationError.invalidRevision) {
+            try await viewModel.saveTitle(for: itemWithoutRev, newTitle: "Updated title")
+        }
+        await #expect(throws: ItemMutationError.invalidRevision) {
+            try await viewModel.saveTitle(for: itemWithZeroRev, newTitle: "Updated title")
+        }
     }
 
     @Test("completeItem moves item to completed status")
@@ -258,11 +276,12 @@ struct ItemsListViewModelTests {
         #expect(viewModel.actionError != nil)
     }
 
-    private func makeItem() -> LifeItem {
+    private func makeItem(revision: Int? = 1) -> LifeItem {
         LifeItem(
             id: UUID(),
             title: "Pay electricity bill",
-            status: .active
+            status: .active,
+            revision: revision
         )
     }
 }
@@ -287,9 +306,9 @@ private final class StubItemRepository: ItemRepository {
         LifeItem(id: UUID(), title: title, status: .active)
     }
 
-    func updateItem(id: UUID, title: String, updatedAt: String?) async throws -> LifeItem {
+    func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem {
         if let updateResult { return try updateResult.get() }
-        return LifeItem(id: id, title: title, status: .active, updatedAt: updatedAt)
+        return LifeItem(id: id, title: title, status: .active, revision: expectedRevision + 1)
     }
 
     func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem {

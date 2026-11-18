@@ -34,9 +34,20 @@ final class SampleItemRepository: ItemRepository {
         return item
     }
 
-    func updateItem(id: UUID, title: String, updatedAt: String?) async throws -> LifeItem {
+    func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem {
         let index = try index(for: id)
+        guard expectedRevision > 0 else {
+            throw ItemMutationError.invalidRevision
+        }
+        guard let storedRevision = items[index].revision, storedRevision > 0 else {
+            throw ItemMutationError.invalidRevision
+        }
+        guard storedRevision == expectedRevision else {
+            throw ItemMutationError.conflict
+        }
         items[index].title = title
+        items[index].revision = storedRevision + 1
+        items[index].updatedAt = ISO8601DateFormatter().string(from: Date())
         return items[index]
     }
 
