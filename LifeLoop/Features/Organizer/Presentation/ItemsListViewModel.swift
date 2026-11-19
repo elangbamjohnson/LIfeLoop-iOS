@@ -83,6 +83,23 @@ final class ItemsListViewModel {
         state = .loaded(items)
     }
 
+    var items: [LifeItem] {
+        if case .loaded(let items) = state { return items }
+        return []
+    }
+
+    var timelineGrouping: TimelineGrouping {
+        TimelineGrouping.group(items: items)
+    }
+
+    func toggleComplete(for item: LifeItem) async {
+        if item.status == .completed {
+            await reopenItem(item)
+        } else {
+            await completeItem(item)
+        }
+    }
+
     func saveTitle(for item: LifeItem, newTitle: String) async throws -> LifeItem {
         guard case .loaded = state, !mutatingItemIDs.contains(item.id) else { throw ItemMutationError.conflict }
         guard let revision = item.revision, revision > 0 else {
@@ -139,6 +156,37 @@ final class ItemsListViewModel {
             actionError = (error as? APIError)?.errorDescription ?? "Could not delete this item. Please try again."
         }
     }
+
+    func snoozeItem(_ item: LifeItem, days: Int) async {
+        guard case .loaded = state, !mutatingItemIDs.contains(item.id) else { return }
+        mutatingItemIDs.insert(item.id)
+        defer { mutatingItemIDs.remove(item.id) }
+        do {
+            let updated = try await repository.snoozeItem(id: item.id, snoozeDays: days)
+            updateItem(updated)
+        } catch {
+            if error is CancellationError { return }
+            actionError = (error as? LocalizedError)?.errorDescription ?? "Could not snooze this item. Please try again."
+        }
+    }
+
+    func confirmReview(_ item: LifeItem) async {
+        guard case .loaded = state, !mutatingItemIDs.contains(item.id) else { return }
+        guard let revision = item.revision, revision > 0 else {
+            actionError = ItemMutationError.invalidRevision.errorDescription
+            return
+        }
+        mutatingItemIDs.insert(item.id)
+        defer { mutatingItemIDs.remove(item.id) }
+        do {
+            let updated = try await repository.confirmReviewItem(id: item.id, expectedRevision: revision)
+            updateItem(updated)
+        } catch {
+            if error is CancellationError { return }
+            actionError = (error as? LocalizedError)?.errorDescription ?? "Could not confirm this item. Please try again."
+        }
+    }
+
 
     func forceLoad() async {
         await load()

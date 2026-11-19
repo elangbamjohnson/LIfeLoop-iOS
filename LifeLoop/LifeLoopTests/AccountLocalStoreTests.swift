@@ -51,6 +51,17 @@ struct AccountLocalStoreTests {
         #expect(try store.draft(itemID: item.id) == nil)
     }
 
+    @Test func deleteItemRemovesItemFromSnapshot() throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true), server: server, accountID: UUID())
+        let item1 = LifeItem(id: UUID(), title: "Item 1", status: .active)
+        let item2 = LifeItem(id: UUID(), title: "Item 2", status: .active)
+        try store.saveItems([item1, item2])
+        try store.deleteItem(id: item1.id)
+        let remaining = try store.readItems()?.items
+        #expect(remaining?.count == 1)
+        #expect(remaining?.first?.id == item2.id)
+    }
+
     @Test func authenticationAndCancellationAreNotOfflineErrors() {
         #expect(!CachedItemRepository.canUseCache(URLError(.cancelled)))
         #expect(!CachedItemRepository.canUseCache(URLError(.serverCertificateUntrusted)))

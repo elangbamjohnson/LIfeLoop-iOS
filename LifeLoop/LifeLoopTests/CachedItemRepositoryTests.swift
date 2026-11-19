@@ -86,12 +86,45 @@ struct CachedItemRepositoryTests {
             try await repository.updateItem(id: itemID, title: "Updated", expectedRevision: 1)
         }
     }
+
+    @Test func deleteItemRemovesFromLocalStoreAfterRemoteSuccess() async throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true),
+                                      server: URL(string: "https://example.com")!, accountID: UUID())
+        let remote = CacheTestRemote()
+        let repository = CachedItemRepository(remote: remote, store: store)
+
+        let initialItems = try await repository.fetchItems()
+        let itemID = initialItems[0].id
+
+        try await repository.deleteItem(id: itemID, updatedAt: nil)
+        #expect(remote.deletedID == itemID)
+
+        let cached = try store.readItems()
+        #expect(cached?.items.isEmpty == true)
+    }
+
+    @Test func snoozeItemReconcilesCacheAfterRemoteSuccess() async throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true),
+                                      server: URL(string: "https://example.com")!, accountID: UUID())
+        let remote = CacheTestRemote()
+        let repository = CachedItemRepository(remote: remote, store: store)
+
+        let initialItems = try await repository.fetchItems()
+        let itemID = initialItems[0].id
+
+        let snoozed = try await repository.snoozeItem(id: itemID, snoozeDays: 1)
+        #expect(snoozed.status == .snoozed)
+
+        let cached = try store.readItems()
+        #expect(cached?.items.first?.status == .snoozed)
+    }
 }
 
 @MainActor
 private final class CacheTestRemote: ItemRepository {
     var failure: Error?
     var updatedItem: LifeItem?
+    var deletedID: UUID?
     let item = LifeItem(id: UUID(), title: "Personal item", status: .active, revision: 1)
     func fetchItems() async throws -> [LifeItem] {
         if let failure { throw failure }
@@ -105,5 +138,12 @@ private final class CacheTestRemote: ItemRepository {
     }
     func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem { throw APIError.forbidden }
     func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem { throw APIError.forbidden }
-    func deleteItem(id: UUID, updatedAt: String?) async throws { throw APIError.forbidden }
+    func snoozeItem(id: UUID, snoozeDays: Int) async throws -> LifeItem {
+        if let failure { throw failure }
+        return LifeItem(id: id, title: "Personal item", status: .snoozed, revision: 2)
+    }
+    func deleteItem(id: UUID, updatedAt: String?) async throws {
+        if let failure { throw failure }
+        deletedID = id
+    }
 }

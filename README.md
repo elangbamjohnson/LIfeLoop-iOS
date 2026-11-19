@@ -47,7 +47,7 @@ Connected editing is intentionally unavailable until the backend supports and ve
 - Phases 3–10 remain in the master guide. Backend prerequisites are not bypassed to expose incomplete features.
 - Signing/distribution are on hold and do not block local implementation.
 
-The authoritative roadmap is `docs/LifeLoop_iOS_Final_Master_Guide_v2.0.md`. Source behavior must be rechecked before enabling writes, captures, APNs, media, Ask, or shared mutations.
+The authoritative roadmap is `docs/LifeLoop_iOS_Feature_First_Roadmap.md`. The comprehensive architecture and learning guide is `docs/IOS_TECH_STACK_AND_LEARNING.md`. Source behavior must be rechecked before enabling writes, captures, APNs, media, Ask, or shared mutations.
 
 ## Phase 2 persistence checkpoint
 

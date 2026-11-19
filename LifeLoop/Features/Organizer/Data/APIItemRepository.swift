@@ -52,13 +52,76 @@ final class APIItemRepository: ItemRepository {
         return canonicalItem
     }
     func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
-        throw ItemMutationError.notAvailable
+        let payload = CompleteItemRequest(completed: true)
+        let body = try JSONEncoder().encode(payload)
+        let (responseData, _) = try await client.request(
+            "api/v1/items/\(id.uuidString.lowercased())/complete",
+            method: "POST", body: body, authenticated: true
+        )
+        let response = try JSONDecoder().decode(ItemResponse.self, from: responseData)
+        return try response.item.domainValue()
     }
     func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
-        throw ItemMutationError.notAvailable
+        let payload = CompleteItemRequest(completed: false)
+        let body = try JSONEncoder().encode(payload)
+        let (responseData, _) = try await client.request(
+            "api/v1/items/\(id.uuidString.lowercased())/complete",
+            method: "POST", body: body, authenticated: true
+        )
+        let response = try JSONDecoder().decode(ItemResponse.self, from: responseData)
+        return try response.item.domainValue()
+    }
+    func snoozeItem(id: UUID, snoozeDays: Int) async throws -> LifeItem {
+        let payload = SnoozeItemRequest(snoozeDays: snoozeDays)
+        let body = try JSONEncoder().encode(payload)
+        let (responseData, _) = try await client.request(
+            "api/v1/items/\(id.uuidString.lowercased())/snooze",
+            method: "POST", body: body, authenticated: true
+        )
+        let response = try JSONDecoder().decode(ItemResponse.self, from: responseData)
+        return try response.item.domainValue()
     }
     func deleteItem(id: UUID, updatedAt: String?) async throws {
-        throw ItemMutationError.notAvailable
+        // DELETE returns 200 {success:true}, not 204 empty
+        _ = try await client.request(
+            "api/v1/items/\(id.uuidString.lowercased())",
+            method: "DELETE", body: nil, authenticated: true
+        )
+    }
+    func confirmReviewItem(id: UUID, expectedRevision: Int?) async throws -> LifeItem {
+        guard let expectedRevision, expectedRevision > 0 else {
+            throw ItemMutationError.invalidRevision
+        }
+        let payload = ConfirmReviewRequest(expectedRevision: expectedRevision)
+        let body = try JSONEncoder().encode(payload)
+        let responseData: Data
+        do {
+            let (data, _) = try await client.request(
+                "api/v1/items/\(id.uuidString.lowercased())",
+                method: "PATCH", body: body, authenticated: true
+            )
+            responseData = data
+        } catch APIError.conflict {
+            throw ItemMutationError.conflict
+        }
+        let response: ItemResponse
+        do {
+            response = try JSONDecoder().decode(ItemResponse.self, from: responseData)
+        } catch {
+            throw APIError.invalidResponse
+        }
+        let canonicalItem: LifeItem
+        do {
+            canonicalItem = try response.item.domainValue()
+        } catch {
+            throw APIError.invalidResponse
+        }
+        guard canonicalItem.id == id,
+              let canonicalRevision = canonicalItem.revision,
+              canonicalRevision > expectedRevision else {
+            throw APIError.invalidResponse
+        }
+        return canonicalItem
     }
     typealias MutationError = ItemMutationError
 
@@ -81,11 +144,13 @@ struct ItemDTO: Decodable {
     let metadata: [String: JSONValue]?
     let updatedAt: String?
     let revision: Int?
+    let snoozedUntil: String?
+    let createdAt: String?
 
     func domainValue() throws -> LifeItem {
         let mappedStatus: ItemStatus
-        switch status {
-        case "pending_review": mappedStatus = .pendingReview
+        switch status.lowercased() {
+        case "pending_review", "pendingreview": mappedStatus = .pendingReview
         case "active": mappedStatus = .active
         case "completed": mappedStatus = .completed
         case "snoozed": mappedStatus = .snoozed
@@ -94,19 +159,19 @@ struct ItemDTO: Decodable {
         }
         var date: Date?
         if let dueDate {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            date = formatter.date(from: dueDate)
-            if date == nil {
-                formatter.formatOptions = [.withInternetDateTime]
-                date = formatter.date(from: dueDate)
+            date = LifeItem.parseDate(dueDate)
+        }
+        if date == nil, let meta = metadata {
+            if case .string(let raw) = meta["dueDate"] {
+                date = LifeItem.parseDate(raw)
+            } else if case .string(let raw) = meta["expiryDate"] {
+                date = LifeItem.parseDate(raw)
             }
-            guard date != nil else { throw APIError.invalidResponse }
         }
         return LifeItem(
             id: id, title: title, status: mappedStatus, itemType: itemType,
             dueDate: date, metadata: metadata ?? [:], updatedAt: updatedAt,
-            revision: revision
+            revision: revision, snoozedUntil: snoozedUntil, createdAt: createdAt
         )
     }
 }

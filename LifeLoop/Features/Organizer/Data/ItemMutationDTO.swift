@@ -5,10 +5,24 @@ struct CreateItemRequest: Encodable {
     let itemType: String
 }
 
+struct CompleteItemRequest: Encodable {
+    let completed: Bool
+}
+
+struct SnoozeItemRequest: Encodable {
+    let snoozeDays: Int
+}
+
 struct UpdateItemTitleRequest: Encodable {
     let title: String
     let expectedRevision: Int
 }
+
+struct ConfirmReviewRequest: Encodable {
+    let status: String = "active"
+    let expectedRevision: Int
+}
+
 
 /// Used for complete/reopen/delete endpoints where the only optional field is updatedAt.
 struct OptionalUpdatedAtRequest: Encodable {

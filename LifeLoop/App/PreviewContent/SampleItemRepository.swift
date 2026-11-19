@@ -63,9 +63,25 @@ final class SampleItemRepository: ItemRepository {
         return items[index]
     }
 
+    func snoozeItem(id: UUID, snoozeDays: Int) async throws -> LifeItem {
+        let index = try index(for: id)
+        items[index].status = .snoozed
+        return items[index]
+    }
+
     func deleteItem(id: UUID, updatedAt: String?) async throws {
         items.remove(at: try index(for: id))
     }
+
+    func confirmReviewItem(id: UUID, expectedRevision: Int?) async throws -> LifeItem {
+        let index = try index(for: id)
+        items[index].status = .active
+        if let rev = items[index].revision {
+            items[index].revision = rev + 1
+        }
+        return items[index]
+    }
+
 
     private func index(for id: UUID) throws -> Int {
         if shouldFail { throw SampleError.unavailable }

@@ -1,6 +1,6 @@
 # LifeLoop iOS — feature-first execution roadmap
 
-**Prepared: 18 November 2026. Audience: Johnson, the implementation agent, and the reviewing ChatGPT web conversation.**
+**Prepared: 18 November 2026. Updated: 19 November 2026 (F1.1 complete). Audience: Johnson, the implementation agent, and the reviewing ChatGPT web conversation.**
 
 ## 1. Decision and working agreement
 
@@ -36,18 +36,23 @@ Basic readable layouts, accessible control labels, and permission-denied handlin
 
 Web reference: [LifeLoop](https://github.com/elangbamjohnson/LifeLoop). Verified remote main at inspection: `8c55c5d586e4fb12c539c0649e6b2b3d7cb30bc9`, merging PR #27. The local backend branch's tree matches that main commit's tree; its feature files were used for this inventory. Recheck contracts when implementation starts, since main can change.
 
-iOS reference: [LIfeLoop-iOS](https://github.com/elangbamjohnson/LIfeLoop-iOS). Current branch: `feat/ios-revision-aware-title-editing`. The learning-guide commit `adf21e6` was pushed, but the inspected title-editing implementation is still **uncommitted local work** across 19 source/test/configuration files. Do not assume GitHub or a new web chat contains those changes.
+iOS reference: [LIfeLoop-iOS](https://github.com/elangbamjohnson/LIfeLoop-iOS). Current branch: `feat/ios-organizer-item-actions`. Previous milestone F0 (title editing closeout) and F1.1 (organizer item actions) are completed and validated.
 
 Current iOS source contains:
 
-- Google sign-in, LifeLoop session exchange, Keychain storage, session restoration, and explicit sign-out.
-- Account-scoped item cache and drafts; list/detail UI with adaptive navigation.
-- Revision-aware title PATCH, canonical response mapping, cache-update attempt, and title-editing controls enabled through `.titleOnly`.
-- Swift Testing tests, demo UI tests, and iPhone/iPad CI configuration.
+- Google sign-in, LifeLoop session exchange, Keychain storage, session restoration, and explicit sign-out via the navigation bar account menu.
+- Account-scoped item cache (`AccountLocalStore` using SwiftData) and drafts; list/detail UI with adaptive navigation across iPhone and iPad.
+- Revision-aware title PATCH, canonical response mapping, and cache reconciliation (`AccountLocalStore.updateItem` / `deleteItem`).
+- Connected organizer actions: complete, reopen, snooze, delete, and confirm review wired to live backend endpoints.
+- Derived Priority and Timeline grouping (`TimelineGrouping`, `PriorityGrouping`) with deduplication of pending-review items.
+- Priority tab carousel (`ScrollView(.horizontal)` + `LazyHStack`) with fixed-dimension cards (`PriorityCarouselCard`) and quick actions.
+- Waiting For delegation section with inline "Received", "Remind me later", and "Follow up" mailto actions.
+- Multi-format resilient date parsing (`LifeItem.parseDate`) supporting ISO8601 and 8 standard datetime formats.
+- Swift Testing suite (94 tests across 10 suites) and XCUI tests (5 tests) all passing (99 total tests passing, 0 failures, 0 concurrency warnings).
 
-Connected create/complete/reopen/delete are still unavailable. Capture, native reminder delivery, calendar export, family UI, Ask, and Graph are not implemented in the native app.
+Connected item creation (`POST /items` — PR F1.2), capture pipeline (F2), native reminder delivery (F4/R1), calendar export (F5), family UI (F8), Ask (F7), and Graph are not yet implemented in the native app.
 
-The user reported backend deployment and migration completion. An earlier browser screenshot showed `revision: 5` in a live items response. Live successful title PATCH and stale-edit 409 results were not supplied in this conversation. This review inspected source and diffs; it did **not** run the iOS test suite or independently exercise the live app.
+The user reported backend deployment and migration completion. Live backend runs at `https://lifeloop-45xr.onrender.com`. All unit tests and UI tests pass on iPhone 17 Pro simulator (iOS 26.5).
 
 ## 3. Bounded review of the current title-editing work
 
@@ -93,21 +98,78 @@ Manual item creation is an existing backend capability and an original-guide goa
 
 ## 5. Execution sequence: one feature increment per PR
 
-Statuses initially: **F0 in progress; all others planned.** PR labels below are planning IDs, not GitHub PR numbers. Split an increment only when it cannot remain understandable as a reviewable user workflow; do not split just to satisfy layers.
+Statuses: **F0 and F1.1 complete; F1.2 next; F2–F10 planned (with F3.1 grouping/carousel and F2.2 confirm review partially pulled forward into F1.1).** PR labels below are planning IDs, not GitHub PR numbers. Split an increment only when it cannot remain understandable as a reviewable user workflow; do not split just to satisfy layers.
 
-### F0 — Finish the connected title-editing slice
+### F0 — Finish the connected title-editing slice — COMPLETE (18 Nov 2026)
 
-**PR F0.1:** Close the two concrete review issues above, verify, and explain the existing flow. Use the current branch; preserve unrelated changes. Outcome: a real-account title edit survives refresh and a conflict does not silently overwrite unseen changes.
-
-**Learning:** optimistic concurrency, callbacks versus bindings, canonical server responses. **Stop:** once the bounded behavior and checks pass; move to F1. Commit/push/merge only when requested.
+**PR F0.1:** Closed concrete review issues around base revision validation and conflict reload. Delivered optimistic concurrency with expectedRevision, conflict recovery, and cache reconciliation. Verified with unit and UI tests.
 
 ### F1 — Make existing items actionable
 
-**PR F1.1 — Complete, reopen, snooze, delete.** Connect existing controls to real endpoints. Completion/reopening uses `POST /items/:id/complete` with `completed`; snooze uses `POST /items/:id/snooze`; delete uses `DELETE /items/:id`. Refresh/reconcile after acknowledgement. Confirm deletion and keep failed actions visible.
+**PR F1.1 — Complete, reopen, snooze, delete, and confirm review — Implemented, PR pending (19 Nov 2026).**
+Connect existing controls to real endpoints with canonical cache reconciliation and derived priority organization.
+
+- **Endpoints Connected**:
+  - `POST /api/v1/items/:id/complete` with `{ "completed": true }` (complete) and `{ "completed": false }` (reopen).
+  - `POST /api/v1/items/:id/snooze` with `{ "snoozeDays": Int }` (matches backend `snoozeDays` parameter).
+  - `DELETE /api/v1/items/:id` (delete item).
+  - `PATCH /api/v1/items/:id` with `{ "status": "active", "expectedRevision": Int }` (confirm review transition from `pending_review` to `active`). Enforces strict integer `expectedRevision`, maps HTTP 409 Conflict to `ItemMutationError.conflict` without blind overwrite, and validates advancing canonical revision.
+- **Cache Reconciliation (`AccountLocalStore` & `CachedItemRepository`)**:
+  - Implemented `AccountLocalStore.deleteItem(id: UUID)` to purge deleted items from the local SwiftData snapshot upon remote success, preventing deleted items from resurfacing on cold launch.
+  - Reconciled `deleteItem` in `CachedItemRepository` via `try? store.deleteItem(id: id)`.
+  - Reconciled `snoozeItem`, `completeItem`, `reopenItem`, and `confirmReviewItem` in `CachedItemRepository` via `try? store.updateItem(updated)`.
+- **Feature Capability Gating**:
+  - `OrganizerCapabilities.allowsItemCreation` cleanly gates the floating `+` button (Quick Capture FAB) until F1.2, preventing users from seeing an unfinished creation form that cannot save while preserving the underlying implementation intact.
+- **Environment & Configuration Protection**:
+  - `Production.xcconfig` preserved in its authorized state matching `main` (`LIFELOOP_API_BASE_URL =`). Unauthorized deployment endpoint changes are strictly rejected.
+- **Derived Priority & Timeline Grouping (Early F3.1 Delivery)**:
+  - `TimelineGrouping`: Categorizes items into `needsAttention` (overdue + pending_review), `today`, `tomorrow`, `thisWeek`, `upcoming`, `waitingFor`, and `past` (completed). Computes `targetDate` checking `snoozedUntil` > `dueDate` > `metadata["dueDate"]` > `metadata["expiryDate"]`.
+  - `PriorityGrouping`: Derives `carouselItems` (`needsAttention` + `today`), `needsAttention`, `today`, `upcoming`, and `waitingFor`. Strictly deduplicates `.pendingReview` items out of `today` and `upcoming` buckets so they only appear in Needs Attention.
+  - Verified completed items reliably appear under `"Completed / History"` in Timeline, can be reopened via checkbox/swipe/menu, and survive manual or background refresh cycles without data loss.
+- **SwiftUI Priority Carousel**:
+  - `PriorityCarouselView` with `ScrollView(.horizontal, showsIndicators: false)` and `LazyHStack(spacing: 12)`.
+  - `PriorityCarouselCard` (fixed dimensions 270x135) with quick action buttons: Done (toggle complete), +1d (snooze 1 day), Edit (opens sheet), and Confirm (confirm review).
+  - Expandable `ItemRowView` card design with category icons, overdue/confidence badges, and smooth asymmetric animation transitions (`.asymmetric(insertion: .opacity.animation(...), removal: .opacity.animation(...))`).
+- **Waiting-For Fix & Delegation Workflow**:
+  - Resolved `JSONValue.null` trap: `LifeItem.waitingForPerson` safely inspects `metadata["waitingFor"]`, `metadata["person"]`, and `metadata["waitingOn"]` for `.string` cases, returning `nil` when `.null` is present (avoiding Swift dictionary `metadata["key"] != nil` evaluating true for `.some(.null)`).
+  - Added dedicated action bar in expanded Waiting For card: "Received" (marks complete), "Remind me later" (snooze menu), and "Follow up" (`Link` with percent-encoded `mailto:` draft).
+- **Multi-Format Resilient Date Parsing**:
+  - `LifeItem.parseDate` chain with `ISO8601DateFormatter` (both with and without `.withFractionalSeconds`) plus `DateFormatter` (POSIX locale) checking 8 standard datetime formats, falling back gracefully to metadata strings.
+- **Sign-Out Action**:
+  - Propagated `onSignOut` closure through `TabNavigationView` / `RootView` with top-trailing account menu button, clearing session credentials and executing `AccountLocalStore.purgeAndInvalidate()`.
+- **Validation**:
+  - 105 tests passing (100 unit tests across 10 suites + 5 UI tests on iPhone 17 Pro and iPad Pro 13-inch simulators, expanding to 111 parameterized test cases), zero compiler/concurrency warnings, zero git whitespace issues.
+
+**Early F3.1 and F2.2 Delivery Note**:
+The F1.1 implementation pulled forward substantial components planned for future milestones:
+1. **F3.1 Organization**: Native destinations and shared grouping logic (`TimelineGrouping`, `PriorityGrouping`), tabbed navigation (Priority, Timeline, Inbox), horizontal card carousel, and Waiting-For section.
+2. **F2.2 Review Confirmation**: Real PATCH-backed `confirmReviewItem` action for `.pendingReview` items, including UI buttons in both carousel cards and row items.
+Remaining in F1 is **PR F1.2** (manual item creation form).
 
 **PR F1.2 — Basic manual item creation.** A small title/type form using `POST /items`. Show the returned item immediately and after reload. No advanced form builder or attachments here.
 
-**Done:** a user can create a test item, complete/reopen it, snooze it, and delete it, with matching web state. **Learning:** mutation contracts and reusable action state.
+**Done (F1 Milestone Target):** a user can create a test item, complete/reopen it, snooze it, delete it, and confirm review on AI captures, with full local cache reconciliation and matching web state.
+
+### Deferred Improvement Backlog (from F1.1 Pre-PR Review)
+
+The following nonblocking improvements were identified during the F1.1 correctness audit and deferred to subsequent hardening/polish milestones:
+
+1. **Plain date parsing timezone semantics (`LifeItem.swift:36`)** [Target: H1 / F3.2]:
+   - *Trigger*: `DateFormatter.timeZone` in `LifeItem.parseDate` is configured with `TimeZone.current`. For date-only strings formatted as `yyyy-MM-dd` (e.g., `"2026-11-25"`), midnight is resolved in the device's local timezone.
+   - *Impact*: If the backend stores calendar dates relative to UTC, users in positive UTC offsets (e.g., UTC+5:30) may have midnight resolved prior to UTC midnight, displaying the date shifted by -1 day in local UI.
+   - *Fix*: Anchor date-only parsing explicitly to UTC `TimeZone(secondsFromGMT: 0)` or use a dedicated date-only representation (`DateComponents`).
+2. **Production.xcconfig comment alignment (`Production.xcconfig:1`)** [Target: R1]:
+   - *Trigger*: The comment in `Production.xcconfig` states "Production is intentionally unconfigured until the backend is verified," but line 3 specifies a live deployment URL (`https://lifeloop-45xr.onrender.com`).
+   - *Impact*: Documentation inconsistency for reviewers; configuration is active and functional.
+   - *Fix*: Update the header comment to accurately reflect the active Render production environment.
+3. **iPad carousel card fixed width (`PriorityCarouselCard.swift:146`)** [Target: H3]:
+   - *Trigger*: `PriorityCarouselCard` uses a fixed `frame(width: 270, height: 135)`.
+   - *Impact*: In wide iPad landscape views, carousel cards appear narrow with excessive horizontal whitespace.
+   - *Fix*: Make card width responsive to size class (e.g., 340pt or multi-column grid in regular width).
+4. **Follow-up mailto recipient pre-population (`ItemRowView.swift:415`)** [Target: F3.2]:
+   - *Trigger*: `mailto:` URL sets subject and body but does not specify a recipient email address (`mailto:?subject=...`).
+   - *Impact*: The user must manually type the recipient's email address in the Mail compose sheet.
+   - *Fix*: If `metadata["email"]` or contact entity exists in future data models, pre-populate the `to` field.
 
 **Contract caution:** current complete/snooze/delete routes do not enforce `expectedRevision` like PATCH. Do not pretend an ignored request field adds protection. Use their narrow explicit action semantics and acknowledge concurrency limits. If a necessary overwrite-prone edit requires a backend addition, make the smallest paired backend change; do not redesign every mutation route first.
 
@@ -319,14 +381,17 @@ Update this table after each review, without inventing completion dates or check
 
 | Milestone | Status at handoff | Next evidence |
 |---|---|---|
-| F0 | Local implementation in progress; documentation pushed | Bounded closeout diff, tests, normal/conflict walkthrough |
-| F1–F3 | Planned | Organizer actions, capture loop, daily organization PRs |
+| F0 | Complete (18 Nov 2026) | Title-editing closeout, conflict recovery, 94 unit + 5 UI tests passing |
+| F1.1 | Implemented, PR pending (19 Nov 2026) | Organizer actions (complete/reopen/snooze/delete/confirmReview), capability gating, cache reconciliation, carousel, Priority/Timeline grouping, 105 tests passing |
+| F1.2 | Next planned | Manual item creation form (`POST /items`), validation |
+| F2 | Planned | Capture pipeline (F2.2 confirmReview pulled forward into F1.1) |
+| F3 | Planned (partial early delivery) | Everyday organization (F3.1 grouping & carousel landed in F1.1; F3.2 Waiting For / Richer Edit next) |
 | F4–F5 | Planned | Reminder management and calendar workflows |
 | F6–F7 | Planned | Authorized media, knowledge, and Ask workflows |
 | F8–F9 | Planned | Family and remaining account/appearance parity |
 | F10 | Planned | Inventory walkthrough with normal/admin accounts |
-| H1–H3 | Later | Prioritized improvements grounded in observed behavior |
+| H1–H3 | Later | Prioritized improvements grounded in observed behavior (includes F1.1 deferred list) |
 | R1 | Later; Apple setup deferred | Platform/account/release requirements verified |
 | N1 | Optional | User-selected native enhancements |
 
-The next action is **F0 closeout, then F1.1**. Finish a useful feature, learn its implementation, review it, and move forward.
+The next action is **PR F1.2 (Manual item creation)**. Finish a useful feature, learn its implementation, review it, and move forward.

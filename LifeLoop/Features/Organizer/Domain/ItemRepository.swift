@@ -20,19 +20,26 @@ enum ItemMutationError: Error, LocalizedError, Equatable {
 struct OrganizerCapabilities: Equatable {
     var allowsTitleEditing: Bool
     var allowsItemMutations: Bool
+    var allowsItemCreation: Bool
+    var isDemo: Bool
 
-    static let none = OrganizerCapabilities(allowsTitleEditing: false, allowsItemMutations: false)
-    static let titleOnly = OrganizerCapabilities(allowsTitleEditing: true, allowsItemMutations: false)
-    static let demo = OrganizerCapabilities(allowsTitleEditing: true, allowsItemMutations: true)
+    static let none = OrganizerCapabilities(allowsTitleEditing: false, allowsItemMutations: false, allowsItemCreation: false, isDemo: false)
+    static let titleOnly = OrganizerCapabilities(allowsTitleEditing: true, allowsItemMutations: false, allowsItemCreation: false, isDemo: false)
+    static let connected = OrganizerCapabilities(allowsTitleEditing: true, allowsItemMutations: true, allowsItemCreation: false, isDemo: false)
+    static let demo = OrganizerCapabilities(allowsTitleEditing: true, allowsItemMutations: true, allowsItemCreation: false, isDemo: true)
 
-    init(allowsTitleEditing: Bool, allowsItemMutations: Bool) {
+    init(allowsTitleEditing: Bool, allowsItemMutations: Bool, allowsItemCreation: Bool = false, isDemo: Bool = false) {
         self.allowsTitleEditing = allowsTitleEditing
         self.allowsItemMutations = allowsItemMutations
+        self.allowsItemCreation = allowsItemCreation
+        self.isDemo = isDemo
     }
 
-    init(allowsEditing: Bool) {
+    init(allowsEditing: Bool, allowsItemCreation: Bool = false, isDemo: Bool = false) {
         self.allowsTitleEditing = allowsEditing
         self.allowsItemMutations = allowsEditing
+        self.allowsItemCreation = allowsItemCreation
+        self.isDemo = isDemo
     }
 }
 
@@ -44,9 +51,14 @@ protocol ItemRepository {
     func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem
     func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem
     func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem
+    func snoozeItem(id: UUID, snoozeDays: Int) async throws -> LifeItem
     func deleteItem(id: UUID, updatedAt: String?) async throws
+    func confirmReviewItem(id: UUID, expectedRevision: Int?) async throws -> LifeItem
 }
 
 extension ItemRepository {
     var cacheDate: Date? { nil }
+    func confirmReviewItem(id: UUID, expectedRevision: Int?) async throws -> LifeItem {
+        throw ItemMutationError.notAvailable
+    }
 }

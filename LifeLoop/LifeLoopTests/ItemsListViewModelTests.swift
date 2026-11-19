@@ -276,6 +276,77 @@ struct ItemsListViewModelTests {
         #expect(viewModel.actionError != nil)
     }
 
+    @Test("snoozeItem moves item to snoozed status")
+    func snoozeItemUpdatesState() async {
+        let item = makeItem()
+        let repository = StubItemRepository(result: .success([item]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.snoozeItem(item, days: 3)
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state")
+            return
+        }
+        #expect(items.first?.status == .snoozed)
+    }
+
+    @Test("snoozeItem sets actionError on failure")
+    func snoozeItemSetsErrorOnFailure() async {
+        let item = makeItem()
+        let repository = StubItemRepository(result: .success([item]))
+        repository.snoozeResult = .failure(StubError.unavailable)
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.snoozeItem(item, days: 1)
+
+        guard case .loaded(let items) = viewModel.state else {
+            Issue.record("Expected loaded state to be preserved on failure")
+            return
+        }
+        #expect(items.first?.status == .active)
+        #expect(viewModel.actionError != nil)
+    }
+
+    @Test func confirmReviewPromotesPendingItemToActive() async {
+        let pending = LifeItem(id: UUID(), title: "Pending Task", status: .pendingReview, revision: 1)
+        let repository = StubItemRepository(result: .success([pending]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.confirmReview(pending)
+
+        #expect(viewModel.items.first?.status == .active)
+        #expect(viewModel.actionError == nil)
+    }
+
+    @Test func confirmReviewRejectsMissingOrInvalidRevision() async {
+        let invalidItem = LifeItem(id: UUID(), title: "Pending Task", status: .pendingReview, revision: nil)
+        let repository = StubItemRepository(result: .success([invalidItem]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.confirmReview(invalidItem)
+
+        #expect(viewModel.items.first?.status == .pendingReview)
+        #expect(viewModel.actionError == ItemMutationError.invalidRevision.errorDescription)
+    }
+
+    @Test func confirmReviewPropagatesConflictError() async {
+        let pending = LifeItem(id: UUID(), title: "Pending Task", status: .pendingReview, revision: 2)
+        let repository = StubItemRepository(result: .success([pending]))
+        repository.confirmReviewResult = .failure(ItemMutationError.conflict)
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        await viewModel.confirmReview(pending)
+
+        #expect(viewModel.items.first?.status == .pendingReview)
+        #expect(viewModel.actionError == ItemMutationError.conflict.errorDescription)
+    }
+
     private func makeItem(revision: Int? = 1) -> LifeItem {
         LifeItem(
             id: UUID(),
@@ -293,6 +364,7 @@ private final class StubItemRepository: ItemRepository {
     var completeResult: Result<LifeItem, Error>?
     var reopenResult: Result<LifeItem, Error>?
     var deleteResult: Result<Void, Error>?
+    var snoozeResult: Result<LifeItem, Error>?
 
     init(result: Result<[LifeItem], Error>) {
         self.result = result
@@ -320,6 +392,18 @@ private final class StubItemRepository: ItemRepository {
         if let reopenResult { return try reopenResult.get() }
         return LifeItem(id: id, title: "Reopened", status: .active, updatedAt: updatedAt)
     }
+
+    func snoozeItem(id: UUID, snoozeDays: Int) async throws -> LifeItem {
+        if let snoozeResult { return try snoozeResult.get() }
+        return LifeItem(id: id, title: "Snoozed", status: .snoozed)
+    }
+
+    var confirmReviewResult: Result<LifeItem, Error>?
+    func confirmReviewItem(id: UUID, expectedRevision: Int?) async throws -> LifeItem {
+        if let confirmReviewResult { return try confirmReviewResult.get() }
+        return LifeItem(id: id, title: "Confirmed", status: .active, revision: (expectedRevision ?? 1) + 1)
+    }
+
 
     func deleteItem(id: UUID, updatedAt: String?) async throws {
         if let deleteResult { try deleteResult.get() }
