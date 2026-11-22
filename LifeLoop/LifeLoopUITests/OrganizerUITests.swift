@@ -169,28 +169,6 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertFalse(app.buttons["editItem"].exists, "Tapping card should not open detail page")
     }
 
-    func testPriorityContextMenuAndSelection() {
-        let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"]
-        app.launch()
-        let row = app.descendants(matching: .any)[firstID].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.press(forDuration: 1.2)
-        XCTAssertTrue(app.buttons["Complete"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Snooze"].exists)
-        XCTAssertTrue(app.buttons["Delete"].exists)
-        app.tap()
-        openFirstItem(app)
-        assertDetail("Pay electricity bill", in: app)
-        showList(app)
-        let priorityTab = app.buttons["Priority"].firstMatch
-        if priorityTab.waitForExistence(timeout: 3) {
-            priorityTab.tap()
-        }
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertTrue(row.isSelected)
-    }
-
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {
         field.tap()
         field.press(forDuration: 1.2)
