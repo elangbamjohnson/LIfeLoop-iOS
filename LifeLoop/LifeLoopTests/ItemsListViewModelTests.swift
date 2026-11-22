@@ -242,6 +242,42 @@ struct ItemsListViewModelTests {
         #expect(items.first?.status == .active)
     }
 
+    @Test("createItem inserts new item at top of loaded list")
+    func createItemAddsToLoadedList() async throws {
+        let existing = makeItem()
+        let repository = StubItemRepository(result: .success([existing]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        let created = try await viewModel.createItem(title: "Brand New Item", itemType: "task")
+        #expect(created.title == "Brand New Item")
+        #expect(viewModel.items.count == 2)
+        #expect(viewModel.items.first?.id == created.id)
+    }
+
+    @Test("createItem transitions empty state to loaded with 1 item")
+    func createItemTransitionsFromEmptyToLoaded() async throws {
+        let repository = StubItemRepository(result: .success([]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+        #expect(viewModel.items.isEmpty)
+
+        let created = try await viewModel.createItem(title: "First Item", itemType: "task")
+        #expect(created.title == "First Item")
+        #expect(viewModel.items.count == 1)
+        #expect(viewModel.items.first?.title == "First Item")
+    }
+
+    @Test("createItem throws on empty title")
+    func createItemThrowsOnEmptyTitle() async {
+        let repository = StubItemRepository(result: .success([]))
+        let viewModel = ItemsListViewModel(repository: repository)
+
+        await #expect(throws: ItemMutationError.emptyTitle) {
+            _ = try await viewModel.createItem(title: "   ", itemType: "task")
+        }
+    }
+
     @Test("deleteItem removes item after acknowledgement")
     func deleteItemRemovesFromList() async {
         let item = makeItem()

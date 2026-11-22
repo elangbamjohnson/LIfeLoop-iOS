@@ -100,6 +100,19 @@ final class ItemsListViewModel {
         }
     }
 
+    func createItem(title: String, itemType: String, dueDate: Date? = nil) async throws -> LifeItem {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ItemMutationError.emptyTitle }
+        let created = try await repository.createItem(title: trimmed, itemType: itemType, dueDate: dueDate)
+        if case .loaded(var currentItems) = state {
+            currentItems.insert(created, at: 0)
+            state = .loaded(currentItems)
+        } else {
+            state = .loaded([created])
+        }
+        return created
+    }
+
     func saveTitle(for item: LifeItem, newTitle: String) async throws -> LifeItem {
         guard case .loaded = state, !mutatingItemIDs.contains(item.id) else { throw ItemMutationError.conflict }
         guard let revision = item.revision, revision > 0 else {

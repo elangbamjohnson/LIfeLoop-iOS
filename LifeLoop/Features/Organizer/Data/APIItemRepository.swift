@@ -10,10 +10,36 @@ final class APIItemRepository: ItemRepository {
             .items.map { try $0.domainValue() }
     }
 
-    // Do not send mutations until the server enforces revision preconditions.
     func createItem(title: String, itemType: String) async throws -> LifeItem {
-        throw ItemMutationError.notAvailable
+        try await createItem(title: title, itemType: itemType, dueDate: nil)
     }
+
+    func createItem(title: String, itemType: String, dueDate: Date? = nil) async throws -> LifeItem {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ItemMutationError.emptyTitle
+        }
+        var dueDateString: String? = nil
+        if let dueDate {
+            dueDateString = ISO8601DateFormatter().string(from: dueDate)
+        }
+        let payload = CreateItemRequest(title: trimmed, itemType: itemType, dueDate: dueDateString)
+        let body = try JSONEncoder().encode(payload)
+        let (responseData, _) = try await client.request(
+            "api/v1/items",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        let response: ItemResponse
+        do {
+            response = try JSONDecoder().decode(ItemResponse.self, from: responseData)
+        } catch {
+            throw APIError.invalidResponse
+        }
+        return try response.item.domainValue()
+    }
+
     func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem {
         guard expectedRevision > 0 else {
             throw ItemMutationError.invalidRevision

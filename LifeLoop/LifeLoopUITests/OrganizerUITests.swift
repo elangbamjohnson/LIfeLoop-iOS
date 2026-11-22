@@ -90,8 +90,9 @@ final class OrganizerUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
 
-        // 1. Verify Quick Capture FAB is gated and hidden until F1.2
-        XCTAssertFalse(app.buttons["quickCaptureButton"].exists)
+        // 1. Verify Quick Capture FAB is present
+        let quickCapture = app.buttons["quickCaptureButton"].firstMatch
+        XCTAssertTrue(quickCapture.waitForExistence(timeout: 5))
 
         // 2. Verify Section Headers
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'REMINDERS & DUE TODAY'")).firstMatch.waitForExistence(timeout: 5))
@@ -167,6 +168,42 @@ final class OrganizerUITests: XCTestCase {
         // 3. Tapping the resting card does not open detail page
         row.tap()
         XCTAssertFalse(app.buttons["editItem"].exists, "Tapping card should not open detail page")
+    }
+
+    func testManualItemCreationFlow() {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let quickCapture = app.buttons["quickCaptureButton"].firstMatch
+        XCTAssertTrue(quickCapture.waitForExistence(timeout: 5))
+        quickCapture.tap()
+
+        let titleField = app.descendants(matching: .any)["createItemTitleField"].firstMatch
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+
+        // Verify Save is disabled when title is blank
+        let saveButton = app.buttons["saveCreateItem"].firstMatch
+        XCTAssertFalse(saveButton.isEnabled)
+
+        // Cancel discards
+        let cancelButton = app.buttons["cancelCreateItem"].firstMatch
+        cancelButton.tap()
+        XCTAssertTrue(quickCapture.waitForExistence(timeout: 5))
+
+        // Open creation modal again
+        quickCapture.tap()
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.tap()
+        titleField.typeText("Buy Organic Milk")
+        XCTAssertTrue(saveButton.isEnabled)
+        saveButton.tap()
+
+        // Wait for sheet dismissal
+        _ = saveButton.waitForNonExistence(timeout: 5)
+
+        // Verify newly created item is rendered
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Buy Organic Milk'")).firstMatch.waitForExistence(timeout: 5))
     }
 
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {

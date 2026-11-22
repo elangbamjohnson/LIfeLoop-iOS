@@ -28,8 +28,22 @@ final class SampleItemRepository: ItemRepository {
     }
 
     func createItem(title: String, itemType: String) async throws -> LifeItem {
+        try await createItem(title: title, itemType: itemType, dueDate: nil)
+    }
+
+    func createItem(title: String, itemType: String, dueDate: Date? = nil) async throws -> LifeItem {
         if shouldFail { throw SampleError.unavailable }
-        let item = LifeItem(id: UUID(), title: title, status: .active, itemType: itemType)
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ItemMutationError.emptyTitle }
+        let item = LifeItem(
+            id: UUID(),
+            title: trimmed,
+            status: .active,
+            itemType: itemType,
+            dueDate: dueDate,
+            revision: 1,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
         items.insert(item, at: 0)
         return item
     }

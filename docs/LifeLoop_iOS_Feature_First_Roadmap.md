@@ -144,11 +144,14 @@ Connect existing controls to real endpoints with canonical cache reconciliation 
 The F1.1 implementation pulled forward substantial components planned for future milestones:
 1. **F3.1 Organization**: Native destinations and shared grouping logic (`TimelineGrouping`, `PriorityGrouping`), tabbed navigation (Priority, Timeline, Inbox), horizontal card carousel, and Waiting-For section.
 2. **F2.2 Review Confirmation**: Real PATCH-backed `confirmReviewItem` action for `.pendingReview` items, including UI buttons in both carousel cards and row items.
-Remaining in F1 is **PR F1.2** (manual item creation form).
+**PR F1.2 — Basic manual item creation — COMPLETE (22 Nov 2026).**
+Small native title/type/due-date form using `POST /api/v1/items`.
+- **Backend & Network**: Connected `POST /api/v1/items` with `CreateItemRequest(title, itemType, dueDate)` and validation in `APIItemRepository`.
+- **Cache Reconciliation**: Implemented `AccountLocalStore.insertItem` and wired `CachedItemRepository.createItem` to keep local SwiftData snapshot in sync.
+- **UI & Interaction**: Built `ItemCreateView` modal with category picker, title validation, optional graphical date picker, and progress/error states; un-gated Quick Capture FAB in `ItemsListView` and modal presentation in `RootView`.
+- **Validation**: 104 unit tests + 7 UI tests all passing cleanly across iPhone and iPad simulators.
 
-**PR F1.2 — Basic manual item creation.** A small title/type form using `POST /items`. Show the returned item immediately and after reload. No advanced form builder or attachments here.
-
-**Done (F1 Milestone Target):** a user can create a test item, complete/reopen it, snooze it, delete it, and confirm review on AI captures, with full local cache reconciliation and matching web state.
+**Done (F1 Milestone Target Complete):** a user can create a test item, complete/reopen it, snooze it, delete it, and confirm review on AI captures, with full local cache reconciliation and matching web state.
 
 ### Deferred Improvement Backlog (from F1.1 Pre-PR Review)
 

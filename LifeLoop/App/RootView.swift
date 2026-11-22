@@ -17,6 +17,7 @@ struct RootView: View {
     @State private var selectedItemID: UUID?
     // The root outlives adaptive column changes, so it owns the active editor.
     @State private var editingItem: LifeItem?
+    @State private var isCreatingItem = false
     @State private var selectedTab: OrganizerTab = .priority
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -62,6 +63,7 @@ struct RootView: View {
                 capabilities: capabilities,
                 editingItem: $editingItem,
                 selectedItemID: $selectedItemID,
+                onCreateItem: { isCreatingItem = true },
                 onSignOut: onSignOut
             )
             .tabItem {
@@ -75,6 +77,7 @@ struct RootView: View {
                 capabilities: capabilities,
                 editingItem: $editingItem,
                 selectedItemID: $selectedItemID,
+                onCreateItem: { isCreatingItem = true },
                 onSignOut: onSignOut
             )
             .tabItem {
@@ -88,6 +91,7 @@ struct RootView: View {
                 capabilities: capabilities,
                 editingItem: $editingItem,
                 selectedItemID: $selectedItemID,
+                onCreateItem: { isCreatingItem = true },
                 onSignOut: onSignOut
             )
             .tabItem {
@@ -98,6 +102,13 @@ struct RootView: View {
         .tint(tabTint(for: selectedTab))
         .onChange(of: viewModel.requiresSignIn) { _, expired in
             if expired { onSessionExpired() }
+        }
+        .sheet(isPresented: $isCreatingItem) {
+            NavigationStack {
+                ItemCreateView { title, itemType, dueDate in
+                    _ = try await viewModel.createItem(title: title, itemType: itemType, dueDate: dueDate)
+                }
+            }
         }
         .fullScreenCover(item: $editingItem) { item in
             NavigationStack {
@@ -137,6 +148,7 @@ private struct TabNavigationView: View {
     let capabilities: OrganizerCapabilities
     @Binding var editingItem: LifeItem?
     @Binding var selectedItemID: UUID?
+    var onCreateItem: (() -> Void)? = nil
     var onSignOut: (() -> Void)? = nil
     @State private var navigationPath: [UUID] = []
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -155,6 +167,7 @@ private struct TabNavigationView: View {
                         selectedItemID = item.id
                         navigationPath = [item.id]
                     },
+                    onCreateItem: onCreateItem,
                     selectedItemID: $selectedItemID
                 )
                 .navigationTitle("LifeLoop")
@@ -203,6 +216,7 @@ private struct TabNavigationView: View {
                     onSelectItem: { item in
                         selectedItemID = item.id
                     },
+                    onCreateItem: onCreateItem,
                     selectedItemID: $selectedItemID
                 )
                 .navigationTitle("LifeLoop")

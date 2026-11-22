@@ -206,16 +206,71 @@ struct APIContractTests {
         #expect(item.updatedAt == "2026-11-14T00:00:00.000Z")
     }
 
-    @Test(arguments: [0])
-    func otherConnectedMutationsMakeNoNetworkRequests(operation: Int) async {
+    @Test func createItemSendsCorrectPayload() async throws {
         let transport = ContractTransport()
-        let client = APIClient(baseURL: server, transport: transport, credentials: MemoryCredentials())
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
         let repository = APIItemRepository(client: client)
-        await #expect(throws: ItemMutationError.notAvailable) {
-            switch operation {
-            case 0: _ = try await repository.createItem(title: "New", itemType: "task")
-            default: _ = try await repository.createItem(title: "New", itemType: "task")
-            }
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/v1/items")
+            let body = try JSONDecoder().decode([String: String].self, from: #require(request.httpBody))
+            #expect(body["title"] == "New Task")
+            #expect(body["itemType"] == "task")
+            #expect(body["dueDate"] == nil)
+
+            let json = """
+            {"item":{"id":"00000000-0000-0000-0000-000000000099","title":"New Task","status":"active","itemType":"task","revision":1}}
+            """
+            return (json.data(using: .utf8)!, HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+        }
+
+        let created = try await repository.createItem(title: "New Task", itemType: "task")
+        #expect(created.title == "New Task")
+        #expect(created.itemType == "task")
+        #expect(created.status == .active)
+        #expect(created.revision == 1)
+    }
+
+    @Test func createItemWithDueDateSendsCorrectPayload() async throws {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        let targetDate = Date(timeIntervalSince1970: 1770000000)
+        transport.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/v1/items")
+            let body = try JSONDecoder().decode([String: String].self, from: #require(request.httpBody))
+            #expect(body["title"] == "Pay Bill")
+            #expect(body["itemType"] == "bill")
+            #expect(body["dueDate"] != nil)
+
+            let json = """
+            {"item":{"id":"00000000-0000-0000-0000-000000000098","title":"Pay Bill","status":"active","itemType":"bill","dueDate":"2026-02-02T02:40:00Z","revision":1}}
+            """
+            return (json.data(using: .utf8)!, HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+        }
+
+        let created = try await repository.createItem(title: "Pay Bill", itemType: "bill", dueDate: targetDate)
+        #expect(created.title == "Pay Bill")
+        #expect(created.itemType == "bill")
+        #expect(created.status == .active)
+    }
+
+    @Test func createItemRejectsEmptyTitle() async throws {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        await #expect(throws: ItemMutationError.emptyTitle) {
+            _ = try await repository.createItem(title: "   ", itemType: "task")
         }
         #expect(transport.requests.isEmpty)
     }
@@ -607,12 +662,12 @@ struct APIContractTests {
         let connected = OrganizerCapabilities.connected
         #expect(connected.allowsTitleEditing)
         #expect(connected.allowsItemMutations)
-        #expect(!connected.allowsItemCreation)
+        #expect(connected.allowsItemCreation)
 
         let demo = OrganizerCapabilities.demo
         #expect(demo.allowsTitleEditing)
         #expect(demo.allowsItemMutations)
-        #expect(!demo.allowsItemCreation)
+        #expect(demo.allowsItemCreation)
 
         let legacyDisabled = OrganizerCapabilities(allowsEditing: false)
         #expect(!legacyDisabled.allowsTitleEditing)
@@ -622,7 +677,7 @@ struct APIContractTests {
         let legacyEnabled = OrganizerCapabilities(allowsEditing: true)
         #expect(legacyEnabled.allowsTitleEditing)
         #expect(legacyEnabled.allowsItemMutations)
-        #expect(!legacyEnabled.allowsItemCreation)
+        #expect(legacyEnabled.allowsItemCreation)
     }
 
     @Test func draftPersistencePreservesIntegerRevisionAndLegacyJSON() throws {
