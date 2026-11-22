@@ -30,6 +30,7 @@ struct ItemsListView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var expandedIDs: Set<UUID> = []
 
@@ -137,127 +138,153 @@ struct ItemsListView: View {
         description: Text("No items or deadlines require your attention right now.")
       )
     } else {
-      List(selection: $selectedItemID) {
-        if !priority.carouselItems.isEmpty {
-          Section {
-            PriorityCarouselView(
-              items: priority.carouselItems,
-              mutatingItemIDs: viewModel.mutatingItemIDs,
-              capabilities: capabilities,
-              onComplete: { item in
-                Task { await viewModel.completeItem(item) }
-              },
-              onSnooze: { item in
-                Task { await viewModel.snoozeItem(item, days: 1) }
-              },
-              onEdit: { item in
-                if let onEditItem {
-                  onEditItem(item)
-                } else {
-                  selectedItemID = item.id
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 0) {
+          if !priority.carouselItems.isEmpty {
+            Section {
+              PriorityCarouselView(
+                items: priority.carouselItems,
+                mutatingItemIDs: viewModel.mutatingItemIDs,
+                capabilities: capabilities,
+                onComplete: { item in
+                  Task { await viewModel.completeItem(item) }
+                },
+                onSnooze: { item in
+                  Task { await viewModel.snoozeItem(item, days: 1) }
+                },
+                onEdit: { item in
+                  if let onEditItem {
+                    onEditItem(item)
+                  } else {
+                    selectedItemID = item.id
+                  }
+                },
+                onConfirmReview: { item in
+                  Task { await viewModel.confirmReview(item) }
                 }
-              },
-              onConfirmReview: { item in
-                Task { await viewModel.confirmReview(item) }
+              )
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+          }
+
+          if !priority.needsAttention.isEmpty {
+            Section {
+              ForEach(priority.needsAttention) { item in
+                row(for: item)
               }
-            )
+            } header: {
+              HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle")
+                  .font(.system(size: 13, weight: .bold))
+                  .foregroundStyle(.orange)
+                Text("NEEDS ATTENTION (\(priority.needsAttention.count))")
+                  .font(.system(size: 11, weight: .bold))
+                  .tracking(0.5)
+                  .foregroundStyle(.orange)
+              }
+              .textCase(nil)
+              .padding(.horizontal, horizontalSizeClass == .regular ? 16 : 20)
+              .padding(.top, 28)
+              .padding(.bottom, 10)
+              .accessibilityAddTraits(.isHeader)
+            }
           }
-          .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
-        }
 
-        if !priority.needsAttention.isEmpty {
           Section {
-            ForEach(priority.needsAttention) { item in
-              row(for: item)
+            if !priority.today.isEmpty {
+              ForEach(priority.today) { item in
+                row(for: item)
+              }
+            } else {
+              PrioritySectionEmptyView(
+                title: "Nothing due today. You are completely on track!",
+                systemImage: "checkmark.circle.fill",
+                tint: .green
+              )
+              .padding(.horizontal, 14)
+              .padding(.vertical, 5)
             }
           } header: {
             HStack(spacing: 6) {
-              Image(systemName: "exclamationmark.triangle")
+              Image(systemName: "checkmark.circle")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.orange)
-              Text("NEEDS ATTENTION (\(priority.needsAttention.count))")
+                .foregroundStyle(.red)
+              Text("TODAY (\(priority.today.count))")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(0.5)
-                .foregroundStyle(.orange)
+                .foregroundStyle(.red)
             }
             .textCase(nil)
+            .padding(.horizontal, horizontalSizeClass == .regular ? 16 : 20)
+            .padding(.top, 24)
+            .padding(.bottom, 10)
+            .accessibilityAddTraits(.isHeader)
           }
-        }
 
-        Section {
-          if !priority.today.isEmpty {
-            ForEach(priority.today) { item in
-              row(for: item)
-            }
-          } else {
-            PrioritySectionEmptyView(
-              title: "Nothing due today. You are completely on track!",
-              systemImage: "checkmark.circle.fill",
-              tint: .green
-            )
-          }
-        } header: {
-          HStack(spacing: 6) {
-            Image(systemName: "checkmark.circle")
-              .font(.system(size: 13, weight: .bold))
-              .foregroundStyle(.red)
-            Text("TODAY (\(priority.today.count))")
-              .font(.system(size: 11, weight: .bold))
-              .tracking(0.5)
-              .foregroundStyle(.red)
-          }
-          .textCase(nil)
-        }
-
-        Section {
-          if !priority.upcoming.isEmpty {
-            ForEach(priority.upcoming) { item in
-              row(for: item)
-            }
-          } else {
-            PrioritySectionEmptyView(
-              title: "No upcoming deadlines detected yet.",
-              systemImage: "calendar",
-              tint: .secondary
-            )
-          }
-        } header: {
-          HStack(spacing: 6) {
-            Image(systemName: "calendar")
-              .font(.system(size: 13, weight: .bold))
-              .foregroundStyle(.blue)
-            Text("UPCOMING (\(priority.upcoming.count))")
-              .font(.system(size: 11, weight: .bold))
-              .tracking(0.5)
-              .foregroundStyle(.blue)
-          }
-          .textCase(nil)
-        }
-
-        if !priority.waitingFor.isEmpty {
           Section {
-            ForEach(priority.waitingFor) { item in
-              row(for: item)
+            if !priority.upcoming.isEmpty {
+              ForEach(priority.upcoming) { item in
+                row(for: item)
+              }
+            } else {
+              PrioritySectionEmptyView(
+                title: "No upcoming deadlines detected yet.",
+                systemImage: "calendar",
+                tint: .secondary
+              )
+              .padding(.horizontal, 14)
+              .padding(.vertical, 5)
             }
           } header: {
             HStack(spacing: 6) {
-              Image(systemName: "hourglass")
+              Image(systemName: "calendar")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.purple)
-              Text("WAITING FOR (\(priority.waitingFor.count))")
+                .foregroundStyle(.blue)
+              Text("UPCOMING (\(priority.upcoming.count))")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(0.5)
-                .foregroundStyle(.purple)
+                .foregroundStyle(.blue)
             }
             .textCase(nil)
+            .padding(.horizontal, horizontalSizeClass == .regular ? 16 : 20)
+            .padding(.top, 24)
+            .padding(.bottom, 10)
+            .accessibilityAddTraits(.isHeader)
           }
-        }
 
-        demoFooter
+          if !priority.waitingFor.isEmpty {
+            Section {
+              ForEach(priority.waitingFor) { item in
+                row(for: item)
+              }
+            } header: {
+              HStack(spacing: 6) {
+                Image(systemName: "hourglass")
+                  .font(.system(size: 13, weight: .bold))
+                  .foregroundStyle(.purple)
+                Text("WAITING FOR (\(priority.waitingFor.count))")
+                  .font(.system(size: 11, weight: .bold))
+                  .tracking(0.5)
+                  .foregroundStyle(.purple)
+              }
+              .textCase(nil)
+              .padding(.horizontal, horizontalSizeClass == .regular ? 16 : 20)
+              .padding(.top, 24)
+              .padding(.bottom, 10)
+              .accessibilityAddTraits(.isHeader)
+            }
+          }
+
+          demoFooter
+            .padding(.horizontal, 14)
+            .padding(.top, 24)
+        }
+        .padding(.horizontal, horizontalSizeClass == .regular ? 16 : 20)
+        .padding(.bottom, 20)
       }
-      .listStyle(.insetGrouped)
+      .background(Color(uiColor: .systemGroupedBackground))
+      .accessibilityIdentifier("priorityScrollView")
       .refreshable { await viewModel.forceLoad() }
       .dialogModifiers(
         itemToDelete: $itemToDelete,
@@ -397,55 +424,12 @@ struct ItemsListView: View {
 
   @ViewBuilder
   private func row(for item: LifeItem) -> some View {
-    Button {
-      if let onSelectItem {
-        onSelectItem(item)
-      } else {
-        selectedItemID = item.id
-      }
-    } label: {
-      ItemRowView(
-        item: item,
-        expanded: tab == .priority ? expandedIDs.contains(item.id) : nil,
-        onToggleExpand: tab == .priority ? {
-          withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
-            if expandedIDs.contains(item.id) {
-              expandedIDs.remove(item.id)
-            } else {
-              expandedIDs.insert(item.id)
-            }
-          }
-        } : nil,
-        isMutating: viewModel.mutatingItemIDs.contains(item.id),
-        onToggleComplete: {
-          Task { await viewModel.toggleComplete(for: item) }
-        },
-        onConfirmReview: item.status == .pendingReview ? {
-          Task { await viewModel.confirmReview(item) }
-        } : nil,
-        onSnooze: capabilities.allowsItemMutations ? { days in
-          Task { await viewModel.snoozeItem(item, days: days) }
-        } : nil,
-        onEdit: capabilities.allowsItemMutations ? {
-          if let onEditItem {
-            onEditItem(item)
-          } else if let onSelectItem {
-            onSelectItem(item)
-          } else {
-            selectedItemID = item.id
-          }
-        } : nil,
-        onDelete: capabilities.allowsItemMutations ? {
-          itemToDelete = item
-          showDeleteConfirmation = true
-        } : nil
-      )
-    }
-    .buttonStyle(.plain)
-    .tag(item.id)
-    .accessibilityIdentifier("item-\(item.id.uuidString)")
-    .accessibilityLabel(item.title)
-    .frame(maxWidth: .infinity)
+    if tab == .priority {
+      priorityRow(for: item)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+    } else {
+      card(for: item)
     .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
     .listRowBackground(Color.clear)
     .listRowSeparator(.hidden)
@@ -494,6 +478,78 @@ struct ItemsListView: View {
         .tint(.yellow)
       }
     }
+    }
+  }
+
+  private func priorityRow(for item: LifeItem) -> some View {
+    card(for: item)
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .fill(Color.accentColor.opacity(selectedItemID == item.id ? 0.08 : 0))
+          .allowsHitTesting(false)
+      }
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .stroke(Color.accentColor.opacity(selectedItemID == item.id ? 0.6 : 0), lineWidth: 2)
+          .allowsHitTesting(false)
+      }
+      .accessibilityAddTraits(selectedItemID == item.id ? .isSelected : [])
+      .id(item.id)
+      .tag(item.id)
+  }
+
+  @ViewBuilder
+  private func card(for item: LifeItem) -> some View {
+    ItemRowView(
+      item: item,
+      expanded: tab == .priority ? expandedIDs.contains(item.id) : nil,
+      onToggleExpand: tab == .priority ? {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+          if expandedIDs.contains(item.id) {
+            expandedIDs.remove(item.id)
+          } else {
+            expandedIDs.insert(item.id)
+          }
+        }
+      } : nil,
+      isMutating: viewModel.mutatingItemIDs.contains(item.id),
+      onToggleComplete: {
+        Task { await viewModel.toggleComplete(for: item) }
+      },
+      onConfirmReview: item.status == .pendingReview ? {
+        Task { await viewModel.confirmReview(item) }
+      } : nil,
+      onSnooze: capabilities.allowsItemMutations ? { days in
+        Task { await viewModel.snoozeItem(item, days: days) }
+      } : nil,
+      onEdit: capabilities.allowsItemMutations ? {
+        if let onEditItem {
+          onEditItem(item)
+        } else if let onSelectItem {
+          onSelectItem(item)
+        } else {
+          selectedItemID = item.id
+        }
+      } : nil,
+      onDelete: capabilities.allowsItemMutations ? {
+        itemToDelete = item
+        showDeleteConfirmation = true
+      } : nil
+    )
+    .contentShape(Rectangle())
+    .onTapGesture {
+      if let onSelectItem {
+        onSelectItem(item)
+      } else {
+        selectedItemID = item.id
+      }
+    }
+    .id(item.id)
+    .tag(item.id)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(item.title)
+    .accessibilityIdentifier("item-\(item.id.uuidString)")
+    .frame(maxWidth: .infinity)
     .contextMenu {
       if capabilities.allowsItemMutations {
         if item.status == .pendingReview {

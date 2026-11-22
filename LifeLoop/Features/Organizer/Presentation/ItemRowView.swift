@@ -36,138 +36,7 @@ struct ItemRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // 1. Header Row: Category Pill, Date, and Always-Visible Action Icons
-            HStack(alignment: .center, spacing: 6) {
-                // Category Pill
-                HStack(spacing: 4) {
-                    Image(systemName: categoryTheme.iconName)
-                        .font(.system(size: 10, weight: .semibold))
-                    Text(categoryTheme.label)
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .fixedSize()
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3.5)
-                .foregroundStyle(categoryTheme.tint)
-                .background(categoryTheme.tint.opacity(0.12), in: Capsule())
-
-                // AI Confidence Pill (if pending review)
-                if let confidence = item.confidencePercentage, item.status == .pendingReview {
-                    HStack(spacing: 3) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text("Needs Review (\(confidence)%)")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .fixedSize()
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .foregroundStyle(.orange)
-                    .background(Color.orange.opacity(0.15), in: Capsule())
-                }
-
-                // Creation / Target Date (e.g. "21 Sep")
-                if let dateString = item.displayDate {
-                    Text(dateString)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color(uiColor: .secondaryLabel))
-                        .padding(.leading, 2)
-                        .fixedSize()
-                }
-
-                Spacer()
-
-                // Action Icons (Confirm, Snooze, Edit, Delete, ChevronDown)
-                HStack(spacing: 8) {
-                    if item.status == .pendingReview, let onConfirmReview {
-                        Button(action: onConfirmReview) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 10, weight: .semibold))
-                                Text("Confirm")
-                                    .font(.system(size: 11, weight: .semibold))
-                            }
-                            .fixedSize(horizontal: true, vertical: true)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .foregroundStyle(.white)
-                            .background(Color.orange, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Confirm AI review for \(item.title)")
-                        .accessibilityIdentifier("confirmReview-\(item.id.uuidString)")
-                    }
-
-                    if isMutating {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
-
-                    if item.status != .pendingReview && item.itemType != "waiting_for", let onSnooze {
-                        Menu {
-                            Button("+1 Day (Tomorrow)") { onSnooze(1) }
-                            Button("+3 Days") { onSnooze(3) }
-                            Button("Next Week (+7d)") { onSnooze(7) }
-                        } label: {
-                            Image(systemName: "clock")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Snooze \(item.title)")
-                    }
-
-                    if let onEdit {
-                        Button(action: onEdit) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Edit \(item.title)")
-                        .accessibilityIdentifier("editItemQuick-\(item.id.uuidString)")
-                    }
-
-                    if let onDelete {
-                        Button(action: onDelete) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Delete \(item.title)")
-                    }
-
-                    // Chevron Expand/Collapse Arrow (omitted for pending review items matching web app)
-                    if item.status != .pendingReview {
-                        Button {
-                            if let onToggleExpand {
-                                onToggleExpand()
-                            } else {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    localIsExpanded.toggle()
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(isExpanded ? "Collapse item" : "Expand item")
-                        .accessibilityIdentifier("chevronExpand-\(item.id.uuidString)")
-                    }
-                }
-            }
+            header
 
             // 2. Main Title Row: Checkbox, Title, and Due Date Badge
             HStack(alignment: .center, spacing: 10) {
@@ -454,6 +323,166 @@ struct ItemRowView: View {
         )
         .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
     }
+    @ViewBuilder
+    private var header: some View {
+        if expanded != nil {
+            ViewThatFits(in: .horizontal) {
+                compactHeader
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        headerBadges
+                        Spacer(minLength: 0)
+                    }
+                    headerActions.frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        } else {
+            compactHeader
+        }
+    }
+
+    private var compactHeader: some View {
+        HStack(alignment: .center, spacing: 6) {
+            headerBadges
+            Spacer()
+            headerActions
+        }
+    }
+
+    @ViewBuilder
+    private var headerBadges: some View {
+        // Category Pill
+        HStack(spacing: 4) {
+            Image(systemName: categoryTheme.iconName)
+                .font(.system(size: 10, weight: .semibold))
+            Text(categoryTheme.label)
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .fixedSize()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3.5)
+        .foregroundStyle(categoryTheme.tint)
+        .background(categoryTheme.tint.opacity(0.12), in: Capsule())
+
+        // AI Confidence Pill (if pending review)
+        if let confidence = item.confidencePercentage, item.status == .pendingReview {
+            HStack(spacing: 3) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("Needs Review (\(confidence)%)")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .foregroundStyle(.orange)
+            .background(Color.orange.opacity(0.15), in: Capsule())
+        }
+
+        // Creation / Target Date (e.g. "21 Sep")
+        if let dateString = item.displayDate {
+            Text(dateString)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+                .padding(.leading, 2)
+                .fixedSize()
+        }
+
+    }
+
+    private var headerActions: some View {
+        // Action Icons (Confirm, Snooze, Edit, Delete, ChevronDown)
+        HStack(spacing: 8) {
+            if item.status == .pendingReview, let onConfirmReview {
+                Button(action: onConfirmReview) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Confirm")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .fixedSize(horizontal: true, vertical: true)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(.white)
+                    .background(Color.orange, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Confirm AI review for \(item.title)")
+                .accessibilityIdentifier("confirmReview-\(item.id.uuidString)")
+            }
+
+            if isMutating {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+
+            if item.status != .pendingReview && item.itemType != "waiting_for", let onSnooze {
+                Menu {
+                    Button("+1 Day (Tomorrow)") { onSnooze(1) }
+                    Button("+3 Days") { onSnooze(3) }
+                    Button("Next Week (+7d)") { onSnooze(7) }
+                } label: {
+                    Image(systemName: "clock")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Snooze \(item.title)")
+            }
+
+            if let onEdit {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit \(item.title)")
+                .accessibilityIdentifier("editItemQuick-\(item.id.uuidString)")
+            }
+
+            if let onDelete {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete \(item.title)")
+            }
+
+            // Chevron Expand/Collapse Arrow (omitted for pending review items matching web app)
+            if item.status != .pendingReview {
+                Button {
+                    if let onToggleExpand {
+                        onToggleExpand()
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            localIsExpanded.toggle()
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "Collapse item" : "Expand item")
+                .accessibilityIdentifier("chevronExpand-\(item.id.uuidString)")
+            }
+        }
+    }
+
 }
 
 #Preview("All statuses") {
@@ -471,4 +500,5 @@ struct ItemRowView: View {
         ))
     }
     .environment(\.dynamicTypeSize, .accessibility5)
+
 }

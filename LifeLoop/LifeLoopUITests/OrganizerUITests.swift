@@ -98,7 +98,7 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'NEEDS ATTENTION'")).firstMatch.waitForExistence(timeout: 5))
 
         // Scroll down to expose Today and Waiting For sections
-        let list = app.collectionViews.firstMatch
+        let list = app.scrollViews["priorityScrollView"]
         if list.exists {
             list.swipeUp()
         } else {
@@ -135,6 +135,51 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertTrue(receivedBtn.waitForExistence(timeout: 3))
         XCTAssertTrue(remindBtn.waitForExistence(timeout: 3))
         XCTAssertTrue(followUpBtn.waitForExistence(timeout: 3))
+    }
+
+    func testPriorityExpansionSurvivesScrollingAndSwipesExposeActions() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let scroll = app.scrollViews["priorityScrollView"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 10))
+        let row = app.descendants(matching: .any)[firstID].firstMatch
+        let chevron = app.buttons["chevronExpand-00000000-0000-0000-0000-000000000001"]
+        XCTAssertTrue(chevron.waitForExistence(timeout: 5))
+        chevron.tap()
+        XCTAssertEqual(chevron.label, "Collapse item")
+        scroll.swipeUp()
+        scroll.swipeDown()
+        XCTAssertEqual(chevron.label, "Collapse item")
+        chevron.tap()
+        XCTAssertEqual(chevron.label, "Expand item")
+
+        // Horizontal swipe must not open the detail page
+        row.swipeLeft()
+        XCTAssertFalse(app.buttons["editItem"].exists, "Swipe left should not open detail page")
+        row.swipeRight()
+        XCTAssertFalse(app.buttons["editItem"].exists, "Swipe right should not open detail page")
+
+        // Tap must still open the detail page
+        row.tap()
+        assertDetail("Pay electricity bill", in: app)
+    }
+
+    func testPriorityContextMenuAndSelection() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let row = app.descendants(matching: .any)[firstID].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["Complete"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Snooze"].exists)
+        XCTAssertTrue(app.buttons["Delete"].exists)
+        app.tap()
+        openFirstItem(app)
+        assertDetail("Pay electricity bill", in: app)
+        showList(app)
+        XCTAssertTrue(row.isSelected)
     }
 
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {
