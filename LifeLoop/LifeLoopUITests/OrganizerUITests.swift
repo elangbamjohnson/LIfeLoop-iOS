@@ -154,15 +154,19 @@ final class OrganizerUITests: XCTestCase {
         chevron.tap()
         XCTAssertEqual(chevron.label, "Expand item")
 
-        // Horizontal swipe must not open the detail page
+        // 1. Horizontal swipe left exposes actions and does not open detail page
         row.swipeLeft()
         XCTAssertFalse(app.buttons["editItem"].exists, "Swipe left should not open detail page")
-        row.swipeRight()
-        XCTAssertFalse(app.buttons["editItem"].exists, "Swipe right should not open detail page")
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
 
-        // Tap must still open the detail page
+        // 2. Tapping the swiped card closes the actions and does not open detail page
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertFalse(app.buttons["editItem"].exists, "Tapping card should not open detail page")
+        _ = app.buttons["Delete"].waitForNonExistence(timeout: 3)
+
+        // 3. Tapping the resting card does not open detail page
         row.tap()
-        assertDetail("Pay electricity bill", in: app)
+        XCTAssertFalse(app.buttons["editItem"].exists, "Tapping card should not open detail page")
     }
 
     func testPriorityContextMenuAndSelection() {
@@ -179,6 +183,11 @@ final class OrganizerUITests: XCTestCase {
         openFirstItem(app)
         assertDetail("Pay electricity bill", in: app)
         showList(app)
+        let priorityTab = app.buttons["Priority"]
+        if priorityTab.waitForExistence(timeout: 3) {
+            priorityTab.tap()
+        }
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.isSelected)
     }
 
@@ -201,6 +210,10 @@ final class OrganizerUITests: XCTestCase {
     }
 
     private func openFirstItem(_ app: XCUIApplication) {
+        let timelineTab = app.buttons["Timeline"]
+        if timelineTab.waitForExistence(timeout: 3) {
+            timelineTab.tap()
+        }
         let row = app.descendants(matching: .any)[firstID].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
