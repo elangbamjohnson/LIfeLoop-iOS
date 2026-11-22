@@ -30,6 +30,9 @@ struct ItemsListView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var expandedIDs: Set<UUID> = []
+
   var body: some View {
     Group {
       switch viewModel.state {
@@ -403,6 +406,16 @@ struct ItemsListView: View {
     } label: {
       ItemRowView(
         item: item,
+        expanded: tab == .priority ? expandedIDs.contains(item.id) : nil,
+        onToggleExpand: tab == .priority ? {
+          withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+            if expandedIDs.contains(item.id) {
+              expandedIDs.remove(item.id)
+            } else {
+              expandedIDs.insert(item.id)
+            }
+          }
+        } : nil,
         isMutating: viewModel.mutatingItemIDs.contains(item.id),
         onToggleComplete: {
           Task { await viewModel.toggleComplete(for: item) }

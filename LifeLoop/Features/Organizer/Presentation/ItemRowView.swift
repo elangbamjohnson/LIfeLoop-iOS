@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ItemRowView: View {
     let item: LifeItem
+    var expanded: Bool? = nil
+    var onToggleExpand: (() -> Void)? = nil
     var isMutating: Bool = false
     var onToggleComplete: (() -> Void)? = nil
     var onConfirmReview: (() -> Void)? = nil
@@ -16,7 +18,9 @@ struct ItemRowView: View {
     var onEdit: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
 
-    @State private var isExpanded: Bool = false
+    @State private var localIsExpanded = false
+
+    private var isExpanded: Bool { expanded ?? localIsExpanded }
 
     private var categoryTheme: ItemCategoryTheme {
         ItemCategoryTheme.theme(for: item.itemType)
@@ -143,8 +147,12 @@ struct ItemRowView: View {
                     // Chevron Expand/Collapse Arrow (omitted for pending review items matching web app)
                     if item.status != .pendingReview {
                         Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                isExpanded.toggle()
+                            if let onToggleExpand {
+                                onToggleExpand()
+                            } else {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    localIsExpanded.toggle()
+                                }
                             }
                         } label: {
                             Image(systemName: "chevron.down")
@@ -429,7 +437,7 @@ struct ItemRowView: View {
                         .padding(.top, 4)
                     }
                 }
-                .transition(.asymmetric(
+                .transition(expanded != nil ? .opacity : .asymmetric(
                     insertion: .opacity.animation(.easeInOut(duration: 0.2).delay(0.06)),
                     removal: .opacity.animation(.easeInOut(duration: 0.14))
                 ))
