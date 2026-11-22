@@ -46,14 +46,6 @@ struct LifeLoopApp: App {
                 ContentUnavailableView("Local storage unavailable", systemImage: "externaldrive.badge.exclamationmark")
             }
         }
-            .safeAreaInset(edge: .bottom) {
-                Text("Demo items reset on restart · Unsaved drafts are kept")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity)
-                    .background(.bar)
-            }
     }
 
     private var demoRepository: SampleItemRepository {

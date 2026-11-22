@@ -20,20 +20,30 @@ struct ConnectedOrganizerView: View {
         Group {
             switch store {
             case .success(let local):
-                RootView(repository: CachedItemRepository(remote: remote, store: local), capabilities: .titleOnly,
-                         localStore: local, onSessionExpired: onSessionExpired)
-                    .safeAreaInset(edge: .bottom) {
-                        Button("Sign out and remove local data") {
-                            do {
-                                try local.purgeAndInvalidate()
-                                onSignOut()
-                            } catch { cleanupError = true }
+                RootView(
+                    repository: CachedItemRepository(remote: remote, store: local),
+                    capabilities: .connected,
+                    localStore: local,
+                    onSessionExpired: onSessionExpired,
+                    onSignOut: {
+                        do {
+                            try local.purgeAndInvalidate()
+                            onSignOut()
+                        } catch {
+                            cleanupError = true
                         }
-                        .padding().frame(maxWidth: .infinity).background(.bar)
                     }
+                )
             case .failure:
-                ContentUnavailableView("Local storage unavailable", systemImage: "externaldrive.badge.exclamationmark",
-                                       description: Text("Restart the app to retry. Your existing data has not been deleted."))
+                ContentUnavailableView {
+                    Label("Local storage unavailable", systemImage: "externaldrive.badge.exclamationmark")
+                } description: {
+                    Text("Restart the app to retry. Your existing data has not been deleted.")
+                } actions: {
+                    Button("Sign Out", role: .destructive) {
+                        onSignOut()
+                    }
+                }
             }
         }
         .alert("Could not remove local data", isPresented: $cleanupError) {

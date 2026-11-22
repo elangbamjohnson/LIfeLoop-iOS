@@ -206,7 +206,7 @@ struct APIContractTests {
         #expect(item.updatedAt == "2026-11-14T00:00:00.000Z")
     }
 
-    @Test(arguments: 0..<4)
+    @Test(arguments: [0])
     func otherConnectedMutationsMakeNoNetworkRequests(operation: Int) async {
         let transport = ContractTransport()
         let client = APIClient(baseURL: server, transport: transport, credentials: MemoryCredentials())
@@ -214,12 +214,101 @@ struct APIContractTests {
         await #expect(throws: ItemMutationError.notAvailable) {
             switch operation {
             case 0: _ = try await repository.createItem(title: "New", itemType: "task")
-            case 1: _ = try await repository.completeItem(id: UUID(), updatedAt: "revision")
-            case 2: _ = try await repository.reopenItem(id: UUID(), updatedAt: "revision")
-            default: try await repository.deleteItem(id: UUID(), updatedAt: "revision")
+            default: _ = try await repository.createItem(title: "New", itemType: "task")
             }
         }
         #expect(transport.requests.isEmpty)
+    }
+
+    @Test func completeItemSendsCorrectPayload() async throws {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/v1/items/\(itemID.uuidString.lowercased())/complete")
+            let body = try JSONDecoder().decode([String: Bool].self, from: #require(request.httpBody))
+            #expect(body["completed"] == true)
+            #expect(body.count == 1)
+            return self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Task","status":"completed","itemType":"task"}}
+            """)
+        }
+
+        let updated = try await repository.completeItem(id: itemID, updatedAt: nil)
+        #expect(updated.id == itemID)
+        #expect(updated.status == .completed)
+    }
+
+    @Test func reopenItemSendsCompletedFalse() async throws {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/v1/items/\(itemID.uuidString.lowercased())/complete")
+            let body = try JSONDecoder().decode([String: Bool].self, from: #require(request.httpBody))
+            #expect(body["completed"] == false)
+            #expect(body.count == 1)
+            return self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Task","status":"active","itemType":"task"}}
+            """)
+        }
+
+        let updated = try await repository.reopenItem(id: itemID, updatedAt: nil)
+        #expect(updated.id == itemID)
+        #expect(updated.status == .active)
+    }
+
+    @Test func snoozeItemSendsCorrectPayload() async throws {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/v1/items/\(itemID.uuidString.lowercased())/snooze")
+            let body = try JSONDecoder().decode([String: Int].self, from: #require(request.httpBody))
+            #expect(body["snoozeDays"] == 3)
+            #expect(body.count == 1)
+            return self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Task","status":"snoozed","itemType":"task"}}
+            """)
+        }
+
+        let updated = try await repository.snoozeItem(id: itemID, snoozeDays: 3)
+        #expect(updated.id == itemID)
+        #expect(updated.status == .snoozed)
+    }
+
+    @Test func deleteItemSendsDeleteRequest() async throws {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000004")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "DELETE")
+            #expect(request.url?.path == "/api/v1/items/\(itemID.uuidString.lowercased())")
+            #expect(request.httpBody == nil)
+            return self.response("{\"success\":true}")
+        }
+
+        try await repository.deleteItem(id: itemID, updatedAt: nil)
+        #expect(transport.requests.count == 1)
     }
 
     @Test func titlePatchSendsCorrectMethodPathAndExactBody() async throws {
@@ -379,6 +468,97 @@ struct APIContractTests {
         #expect(transport.requests.count == 1)
     }
 
+    @Test func confirmReviewPatchSendsStatusActiveAndExactExpectedRevision() async throws {
+        let itemID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { request in
+            #expect(request.httpMethod == "PATCH")
+            #expect(request.url?.path == "/api/v1/items/\(itemID.uuidString.lowercased())")
+            #expect(request.value(forHTTPHeaderField: "Cookie") == "session=test-token")
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            let httpBody = try #require(request.httpBody)
+            let bodyJSON = try #require(try JSONSerialization.jsonObject(with: httpBody) as? [String: Any])
+            #expect(bodyJSON["status"] as? String == "active")
+            #expect(bodyJSON["expectedRevision"] as? Int == 2)
+            #expect(bodyJSON.count == 2)
+            return self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Renew car insurance",
+            "status":"active","itemType":"renewal","dueDate":"2026-09-22T00:00:00.000Z","metadata":{},
+            "revision":3,"updatedAt":"2026-11-19T05:30:00.000Z"}}
+            """)
+        }
+
+        let updated = try await repository.confirmReviewItem(id: itemID, expectedRevision: 2)
+        #expect(updated.id == itemID)
+        #expect(updated.status == .active)
+        #expect(updated.revision == 3)
+    }
+
+    @Test(arguments: [0, -1, -3])
+    func confirmReviewPatchRejectsInvalidRevisionBeforeNetworkRequest(revision: Int) async {
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        await #expect(throws: ItemMutationError.invalidRevision) {
+            try await repository.confirmReviewItem(id: UUID(), expectedRevision: revision)
+        }
+        await #expect(throws: ItemMutationError.invalidRevision) {
+            try await repository.confirmReviewItem(id: UUID(), expectedRevision: nil)
+        }
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test func confirmReviewPatchPropagatesHTTP409WithoutAutomaticRetry() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in
+            self.response("""
+            {"error":"Item has been modified by another session","code":"REVISION_CONFLICT","currentRevision":5}
+            """, status: 409)
+        }
+
+        let error = await #expect(throws: ItemMutationError.self) {
+            try await repository.confirmReviewItem(id: itemID, expectedRevision: 2)
+        }
+        #expect(error == .conflict)
+        #expect(transport.requests.count == 1)
+    }
+
+    @Test func confirmReviewPatchRejectsNonAdvancingRevisionSuccessResponse() async {
+        let itemID = UUID()
+        let transport = ContractTransport()
+        let store = MemoryCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: .distantFuture)
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APIItemRepository(client: client)
+
+        transport.handler = { _ in
+            self.response("""
+            {"item":{"id":"\(itemID.uuidString.lowercased())","title":"Title",
+            "status":"active","itemType":"task","dueDate":null,"metadata":{},
+            "revision":2,"updatedAt":"2026-11-19T05:30:00.000Z"}}
+            """)
+        }
+
+        let error = await #expect(throws: APIError.self) {
+            try await repository.confirmReviewItem(id: itemID, expectedRevision: 2)
+        }
+        #expect(error == .invalidResponse)
+    }
+
     @Test func conflictResponseThrowsAPIErrorConflict() async throws {
         let transport = ContractTransport()
         transport.handler = { _ in self.response("{}", status: 409) }
@@ -417,22 +597,32 @@ struct APIContractTests {
         let none = OrganizerCapabilities.none
         #expect(!none.allowsTitleEditing)
         #expect(!none.allowsItemMutations)
+        #expect(!none.allowsItemCreation)
 
         let titleOnly = OrganizerCapabilities.titleOnly
         #expect(titleOnly.allowsTitleEditing)
         #expect(!titleOnly.allowsItemMutations)
+        #expect(!titleOnly.allowsItemCreation)
+
+        let connected = OrganizerCapabilities.connected
+        #expect(connected.allowsTitleEditing)
+        #expect(connected.allowsItemMutations)
+        #expect(!connected.allowsItemCreation)
 
         let demo = OrganizerCapabilities.demo
         #expect(demo.allowsTitleEditing)
         #expect(demo.allowsItemMutations)
+        #expect(!demo.allowsItemCreation)
 
         let legacyDisabled = OrganizerCapabilities(allowsEditing: false)
         #expect(!legacyDisabled.allowsTitleEditing)
         #expect(!legacyDisabled.allowsItemMutations)
+        #expect(!legacyDisabled.allowsItemCreation)
 
         let legacyEnabled = OrganizerCapabilities(allowsEditing: true)
         #expect(legacyEnabled.allowsTitleEditing)
         #expect(legacyEnabled.allowsItemMutations)
+        #expect(!legacyEnabled.allowsItemCreation)
     }
 
     @Test func draftPersistencePreservesIntegerRevisionAndLegacyJSON() throws {

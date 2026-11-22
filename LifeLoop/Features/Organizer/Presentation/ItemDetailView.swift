@@ -11,6 +11,7 @@ struct ItemDetailView: View {
     let item: LifeItem
     var capabilities: OrganizerCapabilities = .demo
     let onEdit: () -> Void
+    var onSnooze: ((Int) -> Void)? = nil
 
     var allowsEditing: Bool {
         get { capabilities.allowsTitleEditing }
@@ -32,6 +33,17 @@ struct ItemDetailView: View {
                         Spacer()
                         statusBadge
                     }
+                    if item.status == .snoozed {
+                        if let snoozedUntil = item.snoozedUntil {
+                            Label("Snoozed until \(snoozedUntil)", systemImage: "clock.arrow.circlepath")
+                                .font(.footnote)
+                                .foregroundStyle(.purple)
+                        } else {
+                            Label("Snoozed", systemImage: "clock.arrow.circlepath")
+                                .font(.footnote)
+                                .foregroundStyle(.purple)
+                        }
+                    }
                 }
                 .padding(.vertical, 4)
             }
@@ -52,7 +64,17 @@ struct ItemDetailView: View {
         .navigationTitle("Item details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if capabilities.allowsItemMutations, let onSnooze {
+                    Menu {
+                        Button("Tomorrow (+1 Day)") { onSnooze(1) }
+                        Button("+3 Days") { onSnooze(3) }
+                        Button("Next Week (+7 Days)") { onSnooze(7) }
+                    } label: {
+                        Label("Snooze", systemImage: "clock.arrow.circlepath")
+                    }
+                    .accessibilityIdentifier("snoozeItem")
+                }
                 if capabilities.allowsTitleEditing {
                     Button("Edit", action: onEdit)
                         .accessibilityIdentifier("editItem")

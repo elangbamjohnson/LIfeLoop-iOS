@@ -83,6 +83,16 @@ final class AccountLocalStore {
         }
     }
 
+    func deleteItem(id: UUID) throws {
+        guard let snapshot = try readItems() else { return }
+        var items = snapshot.items
+        let originalCount = items.count
+        items.removeAll(where: { $0.id == id })
+        if items.count != originalCount {
+            try write(items, name: "items")
+        }
+    }
+
     func readItems() throws -> (items: [LifeItem], date: Date)? {
         guard let record = try record("items") else { return nil }
         return (try JSONDecoder().decode([LifeItem].self, from: record.payload), record.savedAt)

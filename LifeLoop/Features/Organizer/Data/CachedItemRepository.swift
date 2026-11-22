@@ -40,12 +40,27 @@ final class CachedItemRepository: ItemRepository {
         return updated
     }
     func completeItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
-        try await remote.completeItem(id: id, updatedAt: updatedAt)
+        let updated = try await remote.completeItem(id: id, updatedAt: updatedAt)
+        try? store.updateItem(updated)
+        return updated
     }
     func reopenItem(id: UUID, updatedAt: String?) async throws -> LifeItem {
-        try await remote.reopenItem(id: id, updatedAt: updatedAt)
+        let updated = try await remote.reopenItem(id: id, updatedAt: updatedAt)
+        try? store.updateItem(updated)
+        return updated
+    }
+    func snoozeItem(id: UUID, snoozeDays: Int) async throws -> LifeItem {
+        let updated = try await remote.snoozeItem(id: id, snoozeDays: snoozeDays)
+        try? store.updateItem(updated)
+        return updated
     }
     func deleteItem(id: UUID, updatedAt: String?) async throws {
         try await remote.deleteItem(id: id, updatedAt: updatedAt)
+        try? store.deleteItem(id: id)
+    }
+    func confirmReviewItem(id: UUID, expectedRevision: Int?) async throws -> LifeItem {
+        let updated = try await remote.confirmReviewItem(id: id, expectedRevision: expectedRevision)
+        try? store.updateItem(updated)
+        return updated
     }
 }
