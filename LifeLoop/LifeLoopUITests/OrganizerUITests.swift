@@ -183,7 +183,7 @@ final class OrganizerUITests: XCTestCase {
         openFirstItem(app)
         assertDetail("Pay electricity bill", in: app)
         showList(app)
-        let priorityTab = app.buttons["Priority"]
+        let priorityTab = app.buttons["Priority"].firstMatch
         if priorityTab.waitForExistence(timeout: 3) {
             priorityTab.tap()
         }
@@ -210,7 +210,7 @@ final class OrganizerUITests: XCTestCase {
     }
 
     private func openFirstItem(_ app: XCUIApplication) {
-        let timelineTab = app.buttons["Timeline"]
+        let timelineTab = app.buttons["Timeline"].firstMatch
         if timelineTab.waitForExistence(timeout: 3) {
             timelineTab.tap()
         }
