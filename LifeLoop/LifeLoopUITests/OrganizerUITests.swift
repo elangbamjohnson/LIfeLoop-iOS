@@ -10,6 +10,11 @@ final class OrganizerUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    override func tearDownWithError() throws {
+        XCUIApplication().terminate()
+        try super.tearDownWithError()
+    }
+
     func testCancelDiscardsDraftAndSaveUpdatesList() {
         let app = XCUIApplication()
         app.launchArguments.append("--ui-testing")

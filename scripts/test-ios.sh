@@ -19,6 +19,10 @@ for runtime, devices in sorted(data["devices"].items(), key=runtime_version, rev
 sys.exit("No available simulator for " + family)
 ' "$DEVICE_FAMILY")
 fi
+# Pre-boot the target simulator so SpringBoard/launch services are ready before XCUITest launches.
+xcrun simctl boot "$SIMULATOR_ID" 2>/dev/null || true
+xcrun simctl bootstatus "$SIMULATOR_ID" -b
+
 xcodebuild -version
 xcodebuild \
     -project LifeLoop/LifeLoop.xcodeproj \
