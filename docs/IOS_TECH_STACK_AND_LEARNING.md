@@ -595,3 +595,69 @@ func testPriorityTabComponentsAndWaitingForActions() {
   - 0 Swift concurrency warnings (Swift 6 strict concurrency verified).
   - 0 compiler deprecation warnings.
   - 0 trailing whitespace violations (`diff --check` clean).
+
+
+---
+
+## 6. F1.2 Manual Creation & F2.1 Quick Capture Technical Deep Dive
+
+Milestones F1.2 and F2.1 introduce native item creation (`POST /api/v1/items`) and the primary Quick Capture workflow (`POST /api/v1/captures`) with asynchronous server processing, bounded foreground polling, and Swift 6 concurrency safety.
+
+### 1. Manual Creation & SwiftUI Forms (`ItemCreateView`)
+- **Problem Solved**: Provides a structured fallback ("Create manually") for users who want to specify title, category (`itemType`), and an optional due date directly without waiting for AI extraction.
+- **How It Works**:
+  - `ItemCreateView` uses SwiftUI `Form` controls with local `@State` for title, type, and optional `DatePicker`.
+  - Trims whitespace before enabling submission, disables controls while `isSubmitting == true` to prevent duplicate `POST` requests, and retains entered fields if the server returns an error.
+  - `CachedItemRepository.createItem` reconciles the canonical server `LifeItem` into `AccountLocalStore` via `insertItem(_:)`.
+- **Important Files**:
+  - `LifeLoop/Features/Organizer/Presentation/ItemCreateView.swift`
+  - `LifeLoop/Features/Organizer/Data/APIItemRepository.swift`
+  - `LifeLoop/Features/Organizer/Data/CachedItemRepository.swift`
+
+### 2. Quick Capture & UTF-16 Validation (`CaptureComposerView` & `APICaptureRepository`)
+- **Problem Solved**: Aligns iOS with the web Quick Capture workflow where free-form text is saved immediately on the server and processed asynchronously by AI.
+- **Why UTF-16 Counting**: The Node.js/Express backend validates `rawPayload.length <= 10_000` using JavaScript strings (UTF-16 code units). Checking `text.utf16.count <= 10_000` in Swift ensures exact parity with the backend for emoji and multi-byte characters.
+- **Draft Preservation & Retry**: `CaptureComposerView` clears `text` and calls `dismiss()` **only** after `try await onCapture(text)` returns without throwing. On network or server failure, `isSubmitting` resets to `false`, the exact draft remains in the `TextEditor`, and an inline error banner is displayed so the user can retry without losing input.
+- **Important Files**:
+  - `LifeLoop/Features/Capture/Presentation/CaptureComposerView.swift`
+  - `LifeLoop/Features/Capture/Data/APICaptureRepository.swift`
+  - `LifeLoop/Features/Capture/Data/CaptureDTO.swift`
+
+### 3. `@MainActor`, Structured Concurrency, & Stale-Response Protection (`CaptureViewModel`)
+- **Problem Solved**: Asynchronous capture submission, history loading, and background polling can overlap, or a user can background the app / sign out while a network request is in flight.
+- **How It Works**:
+  - `CaptureViewModel` is annotated `@MainActor @Observable`, ensuring all UI-observed state mutations (`captures`, `isLoading`, `isSubmitting`, `errorMessage`, `requiresSignIn`) execute serially on the main actor without data races under Swift 6 strict concurrency.
+  - **Generation & Request Identity**: `generation: Int` increments on `reset()`, and each load/submission/poll assigns a `UUID` (`activeLoadID`, `submissionID`, `pollingID`). After every `await`, the task checks `generation == requestGeneration`, ID equality, and `!Task.isCancelled` before mutating state.
+  - **Defer Guarding**: `defer` blocks only clear `isLoading` or `isSubmitting` if `self.activeLoadID == requestID` (or `submissionID == operationID`), preventing an older cancelled request's cleanup from clearing a newer request's loading indicator.
+  - **Coalesced Loads**: If `loadCaptures()` is called while `activeLoadTask` is already running, callers `await activeLoadTask.value` instead of firing duplicate `GET /api/v1/captures` requests.
+- **Swift Code Excerpt (`CaptureViewModel.swift`)**:
+```swift
+guard self.generation == requestGeneration,
+      self.activeLoadID == requestID, !Task.isCancelled else { return }
+```
+
+### 4. Background/Foreground Lifecycle & Bounded Polling (`RootView`)
+- **Problem Solved**: Polling must pause immediately when the app leaves the foreground (to save battery and avoid stale updates) and resume when the user returns or opens the Inbox tab.
+- **How It Works**:
+  - `RootView` observes `@Environment(\.scenePhase)` and drives `captureViewModel.setForegroundActive(scenePhase == .active)` both in `.onChange(of: scenePhase)` (immediate invalidation before suspended tasks resume) and `.task(id: scenePhase)`.
+  - Polling runs in a `Task` bounded to `maxPollIterations = 30` with a 4-second sleep interval (`Task.sleep(for: .seconds(4))`), stopping automatically when `hasActiveCaptures` becomes `false` or when `stopPolling()` cancels `pollingTask`.
+  - When `viewModel.requiresSignIn` or `captureViewModel.requiresSignIn` flips to `true` (on 401/403), `reset()` cancels all tasks and `onSessionExpired()` routes cleanly to sign-in.
+
+### 5. SwiftUI Modifier Ordering: `.frame` Before `.overlay` (`ItemsListView`)
+- **Problem Solved**: In `ItemsListView`, the floating Quick Capture `+` button previously shifted position or became unreachable in UI tests when `.overlay(alignment: .bottomTrailing)` was attached to the inner content before `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
+- **How It Works**: Placing `.frame(maxWidth: .infinity, maxHeight: .infinity)` **before** `.overlay(alignment: .bottomTrailing)` gives the overlay container full-screen bounds regardless of whether the inner content is a `ProgressView`, an empty `ContentUnavailableView`, or a populated `List`.
+- **Important File**: `LifeLoop/Features/Organizer/Presentation/ItemsListView.swift` (lines 77–95).
+
+### 6. Testing Strategy & Accessibility Identifiers
+- **Accessibility Identifiers**: Key controls expose stable identifiers (`quickCaptureButton`, `captureTextInput`, `saveCaptureButton`, `openManualCreationButton`, `captureErrorMessage`, `captureRow-<UUID>`) so `OrganizerUITests` can locate elements reliably across iPhone and iPad layouts.
+- **Three Verification Boundaries**:
+  1. **Level 1 — Unit & Contract Tests (`LifeLoopTests`)**: Fast, deterministic Swift Testing suites (`CaptureContractTests`, `CaptureViewModelTests`) using mock repositories and controllable clocks/hooks to verify UTF-16 limits, stale-response rejection, task cancellation, and auth error routing.
+  2. **Level 2 — Automated UI Tests (`LifeLoopUITests`)**: XCUITest (`OrganizerUITests`) launched with `--ui-testing` and deterministic fixtures to verify SwiftUI layout, accessibility, draft retention, and navigation on iPhone and iPad simulators.
+  3. **Level 3/4 — Interactive Simulator & Connected Backend Testing**: Exercises the `Staging` configuration against `https://lifeloop-45xr.onrender.com` with real Google Sign-In, live AI capture processing, and web/iOS sync.
+
+### 7. Connected Staging Verification Notes (25 Nov 2026)
+- **PR #5 Dependency**: `codex/ios-quick-capture-f2.1` is branched from `7e1e763` (`feat/ios-manual-item-creation`, **PR #5**, currently `OPEN` and `MERGEABLE` into `main`). Merge **PR #5** first, then rebase `codex/ios-quick-capture-f2.1` onto `main` before opening the F2.1 PR.
+- **Observed Staging Behavior (iPhone 17 Pro Max, `com.johnson.LifeLoop`)**:
+  - Session restoration against `https://lifeloop-45xr.onrender.com` succeeded and populated Priority (`Buy printer ink`, `Haircut`, `Ushop`) and Inbox (`Recent Captures (6)`, including `Organized` items).
+  - Interactive `CGEvent` + `osascript` verification successfully switched to Inbox, opened Quick Capture (`+`), typed `"E2E Test 25 Nov: pay water bill tomorrow"` (`40/10,000`), and navigated to **Create manually** (`New Item`).
+  - **Tooling Boundary**: `idb`/`fb_simctl`/`cliclick` are absent, and macOS pointer events (`CGEvent` and `osascript click at`) at `y <= 272` on the Simulator sheet (`Capture`, `Save`, `Title`) did not trigger iOS controls, blocking automated end-to-end submission/mutation/sign-out without `idb` or manual taps.

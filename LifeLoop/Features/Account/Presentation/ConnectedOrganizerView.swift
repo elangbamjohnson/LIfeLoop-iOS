@@ -5,13 +5,16 @@ struct ConnectedOrganizerView: View {
     @State private var store: Result<AccountLocalStore, Error>
     @State private var cleanupError = false
     let remote: any ItemRepository
+    let captureRepository: any CaptureRepository
     let onSignOut: () -> Void
     let onSessionExpired: () -> Void
 
     init(account: Account, server: URL, container: Result<ModelContainer, Error>, remote: any ItemRepository,
+         captureRepository: any CaptureRepository = SampleCaptureRepository(),
          onSignOut: @escaping () -> Void, onSessionExpired: @escaping () -> Void) {
         self.store = container.map { AccountLocalStore(container: $0, server: server, accountID: account.id) }
         self.remote = remote
+        self.captureRepository = captureRepository
         self.onSignOut = onSignOut
         self.onSessionExpired = onSessionExpired
     }
@@ -22,6 +25,7 @@ struct ConnectedOrganizerView: View {
             case .success(let local):
                 RootView(
                     repository: CachedItemRepository(remote: remote, store: local),
+                    captureRepository: captureRepository,
                     capabilities: .connected,
                     localStore: local,
                     onSessionExpired: onSessionExpired,

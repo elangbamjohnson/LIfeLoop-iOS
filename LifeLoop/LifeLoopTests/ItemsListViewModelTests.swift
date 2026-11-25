@@ -383,6 +383,24 @@ struct ItemsListViewModelTests {
         #expect(viewModel.actionError == ItemMutationError.conflict.errorDescription)
     }
 
+    @Test func captureRefreshFailureKeepsReviewItemsAndRecoveryClearsError() async {
+        let pending = LifeItem(id: UUID(), title: "Review this", status: .pendingReview, revision: 1)
+        let repository = StubItemRepository(result: .success([pending]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+        repository.result = .failure(StubError.unavailable)
+        await viewModel.refreshAfterCapture()
+        #expect(viewModel.items == [pending])
+        #expect(viewModel.refreshError != nil)
+        repository.result = .success([])
+        await viewModel.refreshAfterCapture()
+        guard case .empty = viewModel.state else {
+            Issue.record("Expected the successful empty response to replace saved items")
+            return
+        }
+        #expect(viewModel.refreshError == nil)
+    }
+
     private func makeItem(revision: Int? = 1) -> LifeItem {
         LifeItem(
             id: UUID(),

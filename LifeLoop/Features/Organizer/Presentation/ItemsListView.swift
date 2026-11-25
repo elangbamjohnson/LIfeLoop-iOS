@@ -10,6 +10,7 @@ import SwiftUI
 
 struct ItemsListView: View {
   let viewModel: ItemsListViewModel
+  var captureViewModel: CaptureViewModel? = nil
   var tab: OrganizerTab = .priority
   var capabilities: OrganizerCapabilities = .demo
   var onEditItem: ((LifeItem) -> Void)? = nil
@@ -37,38 +38,43 @@ struct ItemsListView: View {
 
   var body: some View {
     Group {
-      switch viewModel.state {
-      case .idle, .loading:
-        ProgressView("Loading items…")
+      if tab == .inbox {
+        inboxView
+      } else {
+        switch viewModel.state {
+        case .idle, .loading:
+          ProgressView("Loading items…")
 
-      case .loaded(let allItems):
-        let filteredItems = filterItems(allItems)
-        if filteredItems.isEmpty && !allItems.isEmpty {
-          ContentUnavailableView.search(text: searchText)
-        } else {
-          listContent(for: filteredItems)
-        }
+        case .loaded(let allItems):
+          let filteredItems = filterItems(allItems)
+          if filteredItems.isEmpty && !allItems.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+          } else {
+            listContent(for: filteredItems)
+          }
 
-      case .empty:
-        ContentUnavailableView(
-          "No items yet",
-          systemImage: "tray",
-          description: Text("Your items will appear here.")
-        )
+        case .empty:
+          ContentUnavailableView(
+            "No items yet",
+            systemImage: "tray",
+            description: Text("Your items will appear here.")
+          )
 
-      case .failed(let message):
-        ContentUnavailableView {
-          Label("Unable to load items", systemImage: "exclamationmark.triangle")
-        } description: {
-          Text(message)
-        } actions: {
-          Button("Try again") {
-            retryCount += 1
+        case .failed(let message):
+          ContentUnavailableView {
+            Label("Unable to load items", systemImage: "exclamationmark.triangle")
+          } description: {
+            Text(message)
+          } actions: {
+            Button("Try again") {
+              retryCount += 1
+            }
           }
         }
       }
     }
     .searchable(text: $searchText, prompt: "Search bills, renewals, tasks...")
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .overlay(alignment: .bottomTrailing) {
       if capabilities.allowsItemCreation {
         Button {
@@ -87,7 +93,6 @@ struct ItemsListView: View {
         .accessibilityIdentifier("quickCaptureButton")
       }
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .alert(
       "Action Failed",
       isPresented: Binding(
@@ -121,7 +126,7 @@ struct ItemsListView: View {
     case .timeline:
       timelineList(grouping: grouping)
     case .inbox:
-      inboxList(items: items)
+      inboxView
     }
   }
 
@@ -384,37 +389,99 @@ struct ItemsListView: View {
   }
 
   @ViewBuilder
-  private func inboxList(items: [LifeItem]) -> some View {
-    let pendingItems = items.filter { $0.status == .pendingReview }
-    if pendingItems.isEmpty {
-      ContentUnavailableView(
-        "Inbox",
-        systemImage: "tray",
-        description: Text("Captures and incoming items will appear here.")
-      )
-    } else {
-      List(selection: $selectedItemID) {
+  private var inboxView: some View {
+    let pendingItems: [LifeItem] = {
+      if case .loaded(let all) = viewModel.state {
+        return filterItems(all).filter { $0.status == .pendingReview }
+      }
+      return []
+    }()
+    let captures = captureViewModel?.captures ?? []
+    let captureError = captureViewModel?.errorMessage
+    let awaitingHistory = captureViewModel != nil
+      && captureViewModel?.lastLoadedAt == nil && captureError == nil
+    let itemError: String? = {
+      if case .failed(let message) = viewModel.state { return message }
+      return viewModel.refreshError
+    }()
+    let itemsLoading: Bool = {
+      switch viewModel.state {
+      case .idle, .loading: return true
+      default: return false
+      }
+    }()
+
+    List(selection: $selectedItemID) {
+      if awaitingHistory {
+        ProgressView("Loading captures…")
+      }
+      if let captureError {
         Section {
-          ForEach(pendingItems) { item in
-            row(for: item)
+          Text(captureError).foregroundStyle(.secondary)
+          Button("Retry captures") { Task { await refreshInbox() } }
+            .accessibilityIdentifier("retryCaptureHistory")
+        } header: {
+          Text("Unable to refresh captures")
+        }
+      }
+      if let itemError {
+        Section {
+          Text(itemError).foregroundStyle(.secondary)
+          Button("Retry items") { Task { await viewModel.refreshAfterCapture() } }
+        } header: {
+          Text("Unable to refresh items")
+        }
+      }
+      if !captures.isEmpty {
+        Section {
+          ForEach(captures) { capture in
+            CaptureHistoryRowView(capture: capture)
           }
+        } header: {
+          Label("Recent Captures (\(captures.count))", systemImage: "tray.and.arrow.down")
+            .foregroundStyle(.blue)
+            .font(.caption.bold())
+        }
+      }
+      if !pendingItems.isEmpty {
+        Section {
+          ForEach(pendingItems) { item in row(for: item) }
         } header: {
           Label("Needs Review (\(pendingItems.count))", systemImage: "sparkles")
             .foregroundStyle(.orange)
             .font(.caption.bold())
         }
-
-        demoFooter
       }
-      .listStyle(.insetGrouped)
-      .refreshable { await viewModel.forceLoad() }
-      .dialogModifiers(
-        itemToDelete: $itemToDelete,
-        showDeleteConfirmation: $showDeleteConfirmation,
-        itemToSnooze: $itemToSnooze,
-        showSnoozeDialog: $showSnoozeDialog,
-        viewModel: viewModel
-      )
+      if itemsLoading {
+        ProgressView("Loading review items…")
+      }
+      if captures.isEmpty && pendingItems.isEmpty && !awaitingHistory
+          && !itemsLoading && captureError == nil && itemError == nil {
+        ContentUnavailableView(
+          "Inbox",
+          systemImage: "tray",
+          description: Text("Captures and incoming items will appear here.")
+        )
+      }
+      demoFooter
+    }
+    .listStyle(.insetGrouped)
+    .refreshable { await refreshInbox() }
+    .dialogModifiers(
+      itemToDelete: $itemToDelete,
+      showDeleteConfirmation: $showDeleteConfirmation,
+      itemToSnooze: $itemToSnooze,
+      showSnoozeDialog: $showSnoozeDialog,
+      viewModel: viewModel
+    )
+  }
+
+  private func refreshInbox() async {
+    if let captureViewModel {
+      await captureViewModel.loadCaptures()
+      if !Task.isCancelled { captureViewModel.startPollingIfNeeded() }
+    } else {
+      await viewModel.refreshAfterCapture()
     }
   }
 

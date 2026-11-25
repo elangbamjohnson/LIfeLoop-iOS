@@ -14,7 +14,7 @@ struct ItemCategoryTheme {
 
     static func theme(for itemType: String) -> ItemCategoryTheme {
         switch itemType.lowercased() {
-        case "payment", "bill", "financial":
+        case "payment", "bill", "financial", "purchase":
             return ItemCategoryTheme(label: "Financial", iconName: "creditcard", tint: .green)
         case "document":
             return ItemCategoryTheme(label: "Document", iconName: "doc.text", tint: .green)
@@ -30,6 +30,8 @@ struct ItemCategoryTheme {
             return ItemCategoryTheme(label: "Appointment", iconName: "calendar", tint: .blue)
         case "reminder":
             return ItemCategoryTheme(label: "Reminder", iconName: "bell", tint: .blue)
+        case "deadline":
+            return ItemCategoryTheme(label: "Deadline", iconName: "flag", tint: .red)
         case "waiting_for":
             return ItemCategoryTheme(label: "Waiting For", iconName: "hourglass", tint: .purple)
         case "person", "personal", "memory":

@@ -178,7 +178,17 @@ The following nonblocking improvements were identified during the F1.1 correctne
 
 ### F2 — Deliver the defining capture-to-review loop
 
-**PR F2.1 — Text capture and capture history.** Add `Features/Capture`, a text composer, POST submission, capture history, actual processing statuses, and bounded foreground refresh while work is pending. Preserve text until acknowledgement. Validate against the real 10,000-character contract, considering server/client string-count differences. Explain AI processing before first submission; use the existing server AI, not an iOS AI SDK.
+**PR F2.1 — Text capture and capture history — Implemented, uncommitted; Level 1/2 verified, Level 3/4 connected E2E pending (25 Nov 2026).**
+Added `Features/Capture` with Domain, Data, and Presentation layers:
+- **Text Submission**: Connected `POST /api/v1/captures` with `{ type: "text", source: "ios", rawPayload: "..." }` via `APICaptureRepository`. Enforced 10,000 UTF-16 code unit limit matching backend JavaScript `string.length`. Duplicate taps are prevented; input draft is preserved on failure.
+- **Primary Composer**: Built `CaptureComposerView` with native text editor, real-time UTF-16 character counter, progress indicators, non-destructive failure handling, and disabled duplicate taps.
+- **Secondary Manual Creation**: Quick Capture FAB (`+`) opens `CaptureComposerView` as the primary flow. Retained manual creation (`ItemCreateView`) as a secondary option explicitly labeled "Create manually" within the composer.
+- **Independent Inbox Rendering**: Decoupled Inbox presentation in `ItemsListView` from `ItemsListViewModel.state`. Capture history renders seamlessly for new accounts with 0 items, completed captures with 0 items, or during item-fetch network outages without erasing the existing "Needs Review" section. Initial loading, empty states, and recoverable failure banners with retry actions are supported.
+- **Layout Stability Fix**: Applied `.frame(maxWidth: .infinity, maxHeight: .infinity)` before `.overlay(alignment: .bottomTrailing)` in `ItemsListView` so the Quick Capture FAB keeps stable layout bounds during loading and state transitions.
+- **Request Coordination & Stale-Response Protection**: `CaptureViewModel` tracks operation generations and in-flight request identity (`activeLoadID`). Older history responses cannot overwrite newly acknowledged captures. `reset()` invalidates all pending operations and drops out-of-date responses.
+- **Authentication Routing**: Routed 401/403 capture responses to `requiresSignIn = true` and `onSessionExpired`, stopping polling immediately and delegating to root session handling without creating duplicate auth subsystems.
+- **Bounded Foreground Polling & Coordinated Refresh**: `RootView` serves as the single authoritative owner of the polling lifecycle. Polling uses a 4-second native interval (an intentional native choice balancing responsiveness with battery efficiency against web's 5-second interval) bounded to 30 iterations (~2 minutes). Coordinated refresh syncs both captures and Organizer items upon Inbox entry, foreground return, manual pull-to-refresh, or active capture transitions (including `fallback_pending_retry`).
+- **Validation**: Level 1 (129 unit tests across 12 suites) and Level 2 (12 UI tests) pass on both iPhone 17 Pro Max and iPad Pro 13-inch (M5) simulators. Staging build launches and restores the connected session on iPhone 17 Pro Max (`https://lifeloop-45xr.onrender.com`), displaying live Priority items (`Buy printer ink`, `Haircut`, `Ushop`) and Inbox `Recent Captures (6)`. Interactive simulator testing verified tab switching to Inbox, opening the Quick Capture sheet, typing into the `TextEditor`, and navigating to `Create manually`, while sheet toolbar/top-field pointer events (`Capture`, `Save`, `Title` at `y <= 272`) did not register via macOS `CGEvent`/`osascript` (and `idb`/`fb_simctl` are not installed). iPad Staging launched to Google Sign-In (`Welcome to LifeLoop`). Full connected E2E remains pending manual device/simulator verification.
 
 **PR F2.2 — Capture result review, retry, delete.** Associate resulting items with the capture, show pending-review items, confirm them with the existing PATCH contract, allow title correction through the shared editor, and retry/delete captures using server endpoints. Explain deletion consequences from the actual handler.
 
@@ -384,10 +394,11 @@ Update this table after each review, without inventing completion dates or check
 
 | Milestone | Status at handoff | Next evidence |
 |---|---|---|
-| F0 | Complete (18 Nov 2026) | Title-editing closeout, conflict recovery, 94 unit + 5 UI tests passing |
-| F1.1 | Implemented, PR pending (19 Nov 2026) | Organizer actions (complete/reopen/snooze/delete/confirmReview), capability gating, cache reconciliation, carousel, Priority/Timeline grouping, 105 tests passing |
-| F1.2 | Next planned | Manual item creation form (`POST /items`), validation |
-| F2 | Planned | Capture pipeline (F2.2 confirmReview pulled forward into F1.1) |
+| F0 | Complete (18 Nov 2026) | Title-editing closeout, conflict recovery, merged to `main` (PR #2) |
+| F1.1 | Complete (19 Nov 2026) | Organizer actions, Priority/Timeline grouping, carousel, merged to `main` (PR #3 & PR #4) |
+| F1.2 | Implemented, PR #5 pending (22 Nov 2026) | Manual item creation form (`POST /api/v1/items`), cache reconciliation, CI green; live connected walkthrough pending |
+| F2.1 | Implemented, uncommitted on `codex/ios-quick-capture-f2.1` | Quick Capture (`POST /api/v1/captures`), Inbox history, bounded polling, draft recovery, 129 unit + 12 UI tests passing on iPhone & iPad; Staging session restore verified on iPhone; interactive connected E2E blocked on simulator interaction tooling / iPad OAuth |
+| F2.2 | Next planned | Capture result review, retry, delete |
 | F3 | Planned (partial early delivery) | Everyday organization (F3.1 grouping & carousel landed in F1.1; F3.2 Waiting For / Richer Edit next) |
 | F4–F5 | Planned | Reminder management and calendar workflows |
 | F6–F7 | Planned | Authorized media, knowledge, and Ask workflows |

@@ -21,6 +21,7 @@ struct LifeLoopApp: App {
                         AccountView(
                             accountRepository: services.accountRepository,
                             itemRepository: services.itemRepository,
+                            captureRepository: services.captureRepository,
                             server: services.server, container: services.container
                         )
                     }
@@ -41,11 +42,24 @@ struct LifeLoopApp: App {
     private var demoContent: some View {
         Group {
             if case .success(let store) = composition.demoStore {
-                RootView(repository: demoRepository, localStore: store)
+                RootView(repository: demoRepository, captureRepository: demoCaptureRepository, localStore: store)
             } else {
                 ContentUnavailableView("Local storage unavailable", systemImage: "externaldrive.badge.exclamationmark")
             }
         }
+    }
+
+    private var demoCaptureRepository: SampleCaptureRepository {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        let repository = arguments.contains("--empty-captures")
+            ? SampleCaptureRepository(captures: []) : SampleCaptureRepository()
+        repository.shouldFail = arguments.contains("--failed-captures")
+        repository.failNextSubmission = arguments.contains("--fail-first-capture")
+        return repository
+        #else
+        return SampleCaptureRepository()
+        #endif
     }
 
     private var demoRepository: SampleItemRepository {

@@ -23,6 +23,7 @@ final class ItemsListViewModel {
     private(set) var lastLoadedAt: Date?
     private(set) var showingCache = false
     private(set) var requiresSignIn = false
+    private(set) var refreshError: String?
     private(set) var mutatingItemIDs: Set<UUID> = []
     var actionError: String?
 
@@ -33,12 +34,18 @@ final class ItemsListViewModel {
         self.repository = repository
     }
 
-    func load() async {
+    func load(preservingContent: Bool = false) async {
         guard mutatingItemIDs.isEmpty else { return }
         loadGeneration += 1
         let currentGeneration = loadGeneration
 
-        state = .loading
+        let hasContent: Bool
+        switch state {
+        case .loaded, .empty: hasContent = true
+        default: hasContent = false
+        }
+        if !preservingContent || !hasContent { state = .loading }
+        refreshError = nil
 
         do {
             let items = try await repository.fetchItems()
@@ -57,14 +64,17 @@ final class ItemsListViewModel {
             }
 
             if error is CancellationError || Task.isCancelled {
-                state = .idle
+                if !preservingContent || !hasContent { state = .idle }
                 return
             }
 
             if case APIError.unauthorized = error { requiresSignIn = true }
-            state = .failed(
-                "We couldn't load your items. Please try again."
-            )
+            let message = "We couldn't load your items. Please try again."
+            if preservingContent && hasContent {
+                refreshError = message
+            } else {
+                state = .failed(message)
+            }
         }
     }
 
@@ -200,6 +210,10 @@ final class ItemsListViewModel {
         }
     }
 
+
+    func refreshAfterCapture() async {
+        await load(preservingContent: true)
+    }
 
     func forceLoad() async {
         await load()
