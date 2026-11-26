@@ -22,6 +22,7 @@ struct ItemEditView: View {
     @State private var isConflict = false
     @State private var isMissingRevision = false
     @State private var errorMessage: String?
+    @State private var isDismissing = false
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -133,6 +134,7 @@ struct ItemEditView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
+                    isDismissing = true
                     do {
                         try localStore?.removeDraft(itemID: item.id)
                         dismiss()
@@ -154,6 +156,7 @@ struct ItemEditView: View {
         }
         .interactiveDismissDisabled()
         .onChange(of: draftTitle) { _, title in
+            guard !isDismissing else { return }
             do {
                 try localStore?.saveDraft(
                     ItemDraft(title: title, baseRevision: legacyBaseRevision, baseItemRevision: baseRevision),
