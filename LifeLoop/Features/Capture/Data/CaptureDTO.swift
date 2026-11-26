@@ -21,6 +21,11 @@ struct CaptureListResponse: Decodable {
     let captures: [CaptureDTO]
 }
 
+struct CaptureActionResponse: Decodable {
+    let success: Bool?
+    let message: String?
+}
+
 struct CaptureDTO: Decodable {
     let id: UUID
     let source: String?

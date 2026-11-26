@@ -12,6 +12,7 @@ final class SampleCaptureRepository: CaptureRepository {
     var captures: [Capture]
     var shouldFail: Bool = false
     var failNextSubmission = false
+    var shouldFailMutation = false
 
     init(captures: [Capture]? = nil) {
         if let captures {
@@ -33,6 +34,15 @@ final class SampleCaptureRepository: CaptureRepository {
                     rawPayload: "Dentist appointment with Dr. Smith next Friday at 3pm",
                     processingStatus: .processing,
                     createdAt: Date().addingTimeInterval(-60)
+                ),
+                Capture(
+                    id: UUID(uuidString: "10000000-0000-0000-0000-000000000003")!,
+                    source: "ios",
+                    type: "text",
+                    rawPayload: "Renew passport before summer trip",
+                    processingStatus: .completed,
+                    metadata: ["aiEnrichmentFailed": .bool(true)],
+                    createdAt: Date().addingTimeInterval(-7200)
                 )
             ]
         }
@@ -66,5 +76,36 @@ final class SampleCaptureRepository: CaptureRepository {
     func fetchCaptures() async throws -> [Capture] {
         if shouldFail { throw APIError.server(500) }
         return captures
+    }
+
+    func retryCapture(id: UUID) async throws {
+        if shouldFail || shouldFailMutation { throw APIError.server(500) }
+        guard let index = captures.firstIndex(where: { $0.id == id }) else {
+            throw APIError.server(404)
+        }
+        var updatedMetadata = captures[index].metadata
+        updatedMetadata["aiEnrichmentFailed"] = .bool(false)
+        updatedMetadata.removeValue(forKey: "lastRetryError")
+        captures[index] = Capture(
+            id: captures[index].id,
+            source: captures[index].source,
+            type: captures[index].type,
+            rawPayload: captures[index].rawPayload,
+            originalFilename: captures[index].originalFilename,
+            mimeType: captures[index].mimeType,
+            processingStatus: .fallbackPendingRetry,
+            retryCount: 0,
+            metadata: updatedMetadata,
+            createdAt: captures[index].createdAt,
+            updatedAt: Date()
+        )
+    }
+
+    func deleteCapture(id: UUID) async throws {
+        if shouldFail || shouldFailMutation { throw APIError.server(500) }
+        guard let index = captures.firstIndex(where: { $0.id == id }) else {
+            throw APIError.server(404)
+        }
+        captures.remove(at: index)
     }
 }

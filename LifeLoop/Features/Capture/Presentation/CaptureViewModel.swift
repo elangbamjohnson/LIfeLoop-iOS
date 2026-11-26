@@ -7,11 +7,14 @@ final class CaptureViewModel {
     private(set) var captures: [Capture] = []
     private(set) var isLoading = false
     private(set) var isSubmitting = false
+    private(set) var mutatingCaptureIDs: Set<UUID> = []
     private(set) var requiresSignIn = false
     private(set) var errorMessage: String?
+    var actionError: String?
     private(set) var lastLoadedAt: Date?
 
     var onItemsNeedsRefresh: (() async -> Void)?
+    var onCaptureDeleted: ((UUID) -> Void)?
     var onSessionExpired: (() -> Void)?
 
     private let repository: any CaptureRepository
@@ -19,6 +22,8 @@ final class CaptureViewModel {
     private let maxPollIterations: Int
     private var isForegroundActive = false
     private var generation = 0
+    private var historyEpoch = 0
+    private var deletedCaptureIDs: Set<UUID> = []
     private var activeLoadTask: Task<Void, Never>?
     private var activeLoadID: UUID?
     private var submissionID: UUID?
@@ -59,6 +64,7 @@ final class CaptureViewModel {
 
         let requestID = UUID()
         let requestGeneration = generation
+        let requestEpoch = historyEpoch
         let knownIDs = Set(captures.map(\.id))
         activeLoadID = requestID
         isLoading = true
@@ -74,26 +80,33 @@ final class CaptureViewModel {
             do {
                 let fetched = try await self.repository.fetchCaptures()
                 guard self.generation == requestGeneration,
+                      self.historyEpoch == requestEpoch,
                       self.activeLoadID == requestID, !Task.isCancelled else { return }
 
                 // Only captures acknowledged during this request need protection
                 // from its older snapshot. Later requests use the server as authority.
-                let fetchedIDs = Set(fetched.map(\.id))
+                // Captures deleted in this session stay excluded even if a response lags.
+                let filteredFetched = fetched.filter { !self.deletedCaptureIDs.contains($0.id) }
+                let fetchedIDs = Set(filteredFetched.map(\.id))
                 let newlySubmitted = self.captures.filter {
-                    !knownIDs.contains($0.id) && !fetchedIDs.contains($0.id)
+                    !knownIDs.contains($0.id)
+                        && !fetchedIDs.contains($0.id)
+                        && !self.deletedCaptureIDs.contains($0.id)
                 }
-                self.captures = (fetched + newlySubmitted).sorted {
+                self.captures = (filteredFetched + newlySubmitted).sorted {
                     ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast)
                 }
                 self.lastLoadedAt = Date()
                 self.errorMessage = nil
             } catch {
                 guard self.generation == requestGeneration,
+                      self.historyEpoch == requestEpoch,
                       self.activeLoadID == requestID, !Task.isCancelled else { return }
                 self.handleError(error)
             }
 
             guard self.generation == requestGeneration,
+                  self.historyEpoch == requestEpoch,
                   self.activeLoadID == requestID, !Task.isCancelled,
                   !self.requiresSignIn else { return }
             // Fetch items even for fallback, zero-result, unchanged terminal,
@@ -172,15 +185,87 @@ final class CaptureViewModel {
         pollingID = nil
     }
 
+    func retryCapture(_ capture: Capture) async {
+        guard !requiresSignIn, !mutatingCaptureIDs.contains(capture.id), !Task.isCancelled else { return }
+        let requestGeneration = generation
+        mutatingCaptureIDs.insert(capture.id)
+        actionError = nil
+        defer {
+            if generation == requestGeneration {
+                mutatingCaptureIDs.remove(capture.id)
+            }
+        }
+
+        do {
+            try await repository.retryCapture(id: capture.id)
+            guard generation == requestGeneration, !Task.isCancelled else { return }
+
+            if let index = captures.firstIndex(where: { $0.id == capture.id }) {
+                var updatedMetadata = captures[index].metadata
+                updatedMetadata["aiEnrichmentFailed"] = .bool(false)
+                updatedMetadata.removeValue(forKey: "lastRetryError")
+                captures[index] = Capture(
+                    id: captures[index].id,
+                    source: captures[index].source,
+                    type: captures[index].type,
+                    rawPayload: captures[index].rawPayload,
+                    originalFilename: captures[index].originalFilename,
+                    mimeType: captures[index].mimeType,
+                    processingStatus: .fallbackPendingRetry,
+                    retryCount: 0,
+                    metadata: updatedMetadata,
+                    createdAt: captures[index].createdAt,
+                    updatedAt: Date()
+                )
+            }
+            startPollingIfNeeded()
+            await loadCaptures()
+        } catch {
+            guard generation == requestGeneration, !Task.isCancelled else { return }
+            handleActionError(error, fallbackMessage: "Failed to initiate AI retry. Please try again.")
+        }
+    }
+
+    func deleteCapture(_ capture: Capture) async -> Bool {
+        guard !requiresSignIn, !mutatingCaptureIDs.contains(capture.id), !Task.isCancelled else { return false }
+        let requestGeneration = generation
+        mutatingCaptureIDs.insert(capture.id)
+        actionError = nil
+        defer {
+            if generation == requestGeneration {
+                mutatingCaptureIDs.remove(capture.id)
+            }
+        }
+
+        do {
+            try await repository.deleteCapture(id: capture.id)
+            guard generation == requestGeneration, !Task.isCancelled else { return false }
+            deletedCaptureIDs.insert(capture.id)
+            historyEpoch += 1
+            cancelLoad()
+            captures.removeAll { $0.id == capture.id }
+            onCaptureDeleted?(capture.id)
+            return true
+        } catch {
+            guard generation == requestGeneration, !Task.isCancelled else { return false }
+            handleActionError(error, fallbackMessage: "Could not delete this capture. Please try again.")
+            return false
+        }
+    }
+
     func reset() {
         generation += 1
+        historyEpoch += 1
+        deletedCaptureIDs.removeAll()
         isForegroundActive = false
         stopPolling()
         cancelLoad()
         submissionID = nil
         captures = []
         isSubmitting = false
+        mutatingCaptureIDs = []
         errorMessage = nil
+        actionError = nil
         lastLoadedAt = nil
         requiresSignIn = false
     }
@@ -200,6 +285,17 @@ final class CaptureViewModel {
             onSessionExpired?()
         } else {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Could not complete the capture request. Please try again."
+        }
+    }
+
+    private func handleActionError(_ error: Error, fallbackMessage: String) {
+        if error is CancellationError { return }
+        if let error = error as? APIError, error == .unauthorized || error == .forbidden {
+            reset()
+            requiresSignIn = true
+            onSessionExpired?()
+        } else {
+            actionError = (error as? LocalizedError)?.errorDescription ?? fallbackMessage
         }
     }
 }

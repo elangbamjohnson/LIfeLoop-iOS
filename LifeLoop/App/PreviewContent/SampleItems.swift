@@ -26,7 +26,8 @@ enum SampleItems {
             status: .pendingReview,
             itemType: "renewal",
             revision: 2,
-            createdAt: "2026-09-22T10:00:00Z"
+            createdAt: "2026-09-22T10:00:00Z",
+            captureId: UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
         ),
         LifeItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,

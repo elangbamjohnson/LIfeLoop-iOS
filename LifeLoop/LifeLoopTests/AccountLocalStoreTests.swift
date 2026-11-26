@@ -73,6 +73,22 @@ struct AccountLocalStoreTests {
         #expect(items?.first?.id == newItem.id)
     }
 
+    @Test func deleteItemsForCaptureRemovesOnlyLinkedItems() throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true), server: server, accountID: UUID())
+        let captureA = UUID()
+        let captureB = UUID()
+        let linked1 = LifeItem(id: UUID(), title: "Linked 1", status: .pendingReview, captureId: captureA)
+        let linked2 = LifeItem(id: UUID(), title: "Linked 2", status: .active, captureId: captureA)
+        let otherCapture = LifeItem(id: UUID(), title: "Other Capture", status: .active, captureId: captureB)
+        let manual = LifeItem(id: UUID(), title: "Manual", status: .active)
+        try store.saveItems([linked1, linked2, otherCapture, manual])
+
+        try store.deleteItems(forCaptureID: captureA)
+
+        let remaining = try store.readItems()?.items ?? []
+        #expect(remaining.map(\.id) == [otherCapture.id, manual.id])
+    }
+
     @Test func authenticationAndCancellationAreNotOfflineErrors() {
         #expect(!CachedItemRepository.canUseCache(URLError(.cancelled)))
         #expect(!CachedItemRepository.canUseCache(URLError(.serverCertificateUntrusted)))

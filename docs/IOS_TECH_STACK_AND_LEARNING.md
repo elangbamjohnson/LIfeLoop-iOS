@@ -656,8 +656,34 @@ guard self.generation == requestGeneration,
   3. **Level 3/4 — Interactive Simulator & Connected Backend Testing**: Exercises the `Staging` configuration against `https://lifeloop-45xr.onrender.com` with real Google Sign-In, live AI capture processing, and web/iOS sync.
 
 ### 7. Connected Staging Verification Notes (25 Nov 2026)
-- **PR #5 Dependency**: `codex/ios-quick-capture-f2.1` is branched from `7e1e763` (`feat/ios-manual-item-creation`, **PR #5**, currently `OPEN` and `MERGEABLE` into `main`). Merge **PR #5** first, then rebase `codex/ios-quick-capture-f2.1` onto `main` before opening the F2.1 PR.
+- **Merged History**: **PR #5** (`F1.2`, commit `2aa2694`) and **PR #6** (`F2.1`, commit `be1bc0a`) are now merged into `main`. `feat/ios-capture-review-retry-delete-f2.2` branches directly from `main` (`be1bc0a`).
 - **Observed Staging Behavior (iPhone 17 Pro Max, `com.johnson.LifeLoop`)**:
   - Session restoration against `https://lifeloop-45xr.onrender.com` succeeded and populated Priority (`Buy printer ink`, `Haircut`, `Ushop`) and Inbox (`Recent Captures (6)`, including `Organized` items).
   - Interactive `CGEvent` + `osascript` verification successfully switched to Inbox, opened Quick Capture (`+`), typed `"E2E Test 25 Nov: pay water bill tomorrow"` (`40/10,000`), and navigated to **Create manually** (`New Item`).
   - **Tooling Boundary**: `idb`/`fb_simctl`/`cliclick` are absent, and macOS pointer events (`CGEvent` and `osascript click at`) at `y <= 272` on the Simulator sheet (`Capture`, `Save`, `Title`) did not trigger iOS controls, blocking automated end-to-end submission/mutation/sign-out without `idb` or manual taps.
+
+---
+
+## Section 7: F2.2 Capture Review, Retry, and Cascade Delete
+
+### 1. Cross-Feature Cache Reconciliation & Deletion Race Protection (`Capture` → `LifeItem`)
+- **Problem Solved**: Backend `DELETE /api/v1/captures/:id` relies on Postgres `onDelete: "cascade"` on `items.captureId` to delete extracted items server-side. Beyond removing linked items locally on deletion, an in-flight pre-delete `fetchCaptures()` or `fetchItems()` response arriving after `DELETE` (even if task cancellation is ignored) must not reintroduce deleted captures or extracted items into UI state or the persisted SwiftData offline cache.
+- **How It Works**:
+  - `LifeItem` and `ItemDTO` preserve `captureId: UUID?` from `GET /api/v1/items`.
+  - **History (`CaptureViewModel`)**: On successful `deleteCapture(_:)`, `CaptureViewModel` records the capture ID in session-scoped `deletedCaptureIDs`, increments `historyEpoch`, cancels/clears `activeLoadTask` (so older fetches cannot restore `captures` or emit stale refreshes and subsequent fetches run fresh), and fires `onCaptureDeleted?(capture.id)`.
+  - **Organizer & Persistence (`ItemsListViewModel`, `AccountLocalStore`, `CachedItemRepository`)**: `ItemsListViewModel.removeItems(forCaptureID:)` records `deletedCaptureIDs` regardless of state (so cleanup during `.loading`/`.idle` still excludes deleted items when the response arrives), while `AccountLocalStore.deleteItems(forCaptureID:)` records the marker on the `(server|accountID)` session store and removes matching cached items from disk. `CachedItemRepository.fetchItems()` filters responses via `store.filterActiveCaptureItems(_:)` before persisting or returning, and checks `store.currentItemMutationEpoch` so concurrent item mutations aren't clobbered. All session markers and epochs reset on `CaptureViewModel.reset()`, `ItemsListViewModel.reset()`, and `AccountLocalStore.purgeAndInvalidate()`.
+- **Important Files**: `LifeItem.swift`, `APIItemRepository.swift`, `AccountLocalStore.swift`, `CachedItemRepository.swift`, `ItemsListViewModel.swift`, `CaptureViewModel.swift`, `RootView.swift`.
+
+### 2. Nested Interactive Actions Inside SwiftUI `List` Rows
+- **Problem Solved**: Inbox rows live inside a `List`, where SwiftUI normally treats the whole row as one hit/accessibility target, and reusing `item-<UUID>` identifiers inside capture cards would create ambiguous matches in UI tests against the "Needs Review" section. In live Staging pointer testing on `iPhone 17 Pro Max`, `.buttonStyle(.borderless)` with tight `4pt` padding caused nested `Confirm`/`Edit` buttons to miss direct pointer taps and inherited unwanted tab tint colors, even though `XCUIElement.tap()` passed.
+- **How It Works**: `CaptureHistoryRowView` uses `.accessibilityElement(children: .contain)` on capture and nested item containers, applies `.buttonStyle(.plain)` with explicit `32x32` frames on icon buttons (`Rectangle` / `Capsule` content shapes matching `ItemRowView`), and scopes nested IDs to `captureItem-<UUID>`, `captureConfirmItem-<UUID>`, `captureEditItem-<UUID>`, `retryCapture-<UUID>`, and `deleteCapture-<UUID>`.
+
+### 3. Modal Warning Consistency Across iPhone & iPad
+- **Problem Solved**: On iPad, `.confirmationDialog` can present as a popover that omits `.cancel` buttons and compresses warning text, whereas capture deletion causes irreversible cascade deletion of extracted items.
+- **How It Works**: Using `.alert("Delete this capture?", ...)` matches the web `AlertDialog` contract cleanly on both iPhone and iPad, keeping the `"Cancel"` action, destructive `"Delete Capture"` button (`confirmDeleteCapture`), and cascade warning message visible before any `DELETE` request is sent.
+
+### 4. Web Parity for Fallback AI Status & Retry
+- **How It Works**: `Capture.statusDisplayLabel` mirrors the web dashboard: `.completed` with `metadata["aiEnrichmentFailed"] == .bool(true)` renders `"Saved (AI unavailable)"`, and `.fallbackPendingRetry` renders `"Enriching with AI"`. `Retry AI` is enabled whenever `processingStatus == .failed || aiEnrichmentFailed`, calling `POST /api/v1/captures/:id/retry` and restarting bounded polling.
+
+### 5. Live Connected Staging Walkthrough (`iPhone 17 Pro Max`, 26 Nov 2026)
+- Targeting the simulator's Accessibility framebuffer bounds allowed direct pointer verification of `Staging` (`com.johnson.LifeLoop`) against `https://lifeloop-45xr.onrender.com`: Quick Capture submission, `"Enriching with AI"` → `"Saved (AI unavailable)"` transition, inline item title edit (`PATCH`), inline `Confirm` review (`PATCH` promoting `Needs Review` → `Active`), **Retry AI** (`POST /api/v1/captures/:id/retry`), `"Delete this capture?"` warning/cancellation/deletion (`DELETE /api/v1/captures/:id`), **Priority** cascade cleanup, and force-quit/relaunch persistence.

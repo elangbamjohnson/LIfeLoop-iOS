@@ -13,16 +13,21 @@ final class CachedItemRepository: ItemRepository {
 
     func fetchItems() async throws -> [LifeItem] {
         cacheDate = nil
+        let requestMutationEpoch = store.currentItemMutationEpoch
         do {
             let items = try await remote.fetchItems()
             try Task.checkCancellation()
-            try store.saveItems(items)
-            return items
+            let activeItems = store.filterActiveCaptureItems(items)
+            guard store.currentItemMutationEpoch == requestMutationEpoch else {
+                throw CancellationError()
+            }
+            try store.saveItems(activeItems)
+            return activeItems
         } catch let error as URLError where Self.canUseCache(error) {
             try Task.checkCancellation()
             guard let snapshot = try store.readItems() else { throw error }
             cacheDate = snapshot.date
-            return snapshot.items
+            return store.filterActiveCaptureItems(snapshot.items)
         }
     }
 

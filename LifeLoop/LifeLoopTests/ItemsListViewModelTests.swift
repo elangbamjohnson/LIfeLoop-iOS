@@ -401,6 +401,65 @@ struct ItemsListViewModelTests {
         #expect(viewModel.refreshError == nil)
     }
 
+    @Test func removeItemsForCaptureDeletesOnlyMatchingCaptureItemsAndUpdatesEmptyState() async {
+        let captureID = UUID()
+        let otherCaptureID = UUID()
+        let linked = LifeItem(
+            id: UUID(),
+            title: "Extracted item",
+            status: .pendingReview,
+            revision: 1,
+            captureId: captureID
+        )
+        let other = LifeItem(
+            id: UUID(),
+            title: "Other item",
+            status: .active,
+            revision: 1,
+            captureId: otherCaptureID
+        )
+        let repository = StubItemRepository(result: .success([linked, other]))
+        let viewModel = ItemsListViewModel(repository: repository)
+        await viewModel.load()
+
+        viewModel.removeItems(forCaptureID: captureID)
+        #expect(viewModel.items == [other])
+        guard case let .loaded(remaining) = viewModel.state else {
+            Issue.record("Expected loaded state while unrelated items remain")
+            return
+        }
+        #expect(remaining == [other])
+
+        viewModel.removeItems(forCaptureID: otherCaptureID)
+        #expect(viewModel.items.isEmpty)
+        guard case .empty = viewModel.state else {
+            Issue.record("Expected empty state after removing last remaining item")
+            return
+        }
+    }
+
+    @Test func removeItemsWhileNotLoadedStillExcludesDeletedCaptureItemsOnNextLoadAndResetClearsMarkers() async {
+        let captureA = UUID()
+        let itemA = LifeItem(id: UUID(), title: "Deleted capture item", status: .pendingReview, revision: 1, captureId: captureA)
+        let itemB = LifeItem(id: UUID(), title: "Active item", status: .active, revision: 1)
+        let repository = StubItemRepository(result: .success([itemA, itemB]))
+        let viewModel = ItemsListViewModel(repository: repository)
+
+        // Removal happens while viewModel is still .idle (not .loaded).
+        viewModel.removeItems(forCaptureID: captureA)
+        await viewModel.load()
+        #expect(viewModel.items == [itemB])
+
+        // After reset(), old session deletion markers are cleared cleanly.
+        viewModel.reset()
+        guard case .idle = viewModel.state else {
+            Issue.record("Expected reset() to restore .idle state")
+            return
+        }
+        await viewModel.load()
+        #expect(viewModel.items == [itemA, itemB])
+    }
+
     private func makeItem(revision: Int? = 1) -> LifeItem {
         LifeItem(
             id: UUID(),

@@ -26,6 +26,8 @@ struct ItemsListView: View {
   @State private var retryCount = 0
   @State private var itemToDelete: LifeItem?
   @State private var showDeleteConfirmation = false
+  @State private var captureToDelete: Capture?
+  @State private var showDeleteCaptureConfirmation = false
   @State private var itemToSnooze: LifeItem?
   @State private var showSnoozeDialog = false
   @State private var searchText = ""
@@ -96,13 +98,21 @@ struct ItemsListView: View {
     .alert(
       "Action Failed",
       isPresented: Binding(
-        get: { viewModel.actionError != nil },
-        set: { if !$0 { viewModel.actionError = nil } }
+        get: { viewModel.actionError != nil || captureViewModel?.actionError != nil },
+        set: {
+          if !$0 {
+            viewModel.actionError = nil
+            captureViewModel?.actionError = nil
+          }
+        }
       )
     ) {
-      Button("OK", role: .cancel) { viewModel.actionError = nil }
+      Button("OK", role: .cancel) {
+        viewModel.actionError = nil
+        captureViewModel?.actionError = nil
+      }
     } message: {
-      if let error = viewModel.actionError {
+      if let error = viewModel.actionError ?? captureViewModel?.actionError {
         Text(error)
       }
     }
@@ -390,12 +400,13 @@ struct ItemsListView: View {
 
   @ViewBuilder
   private var inboxView: some View {
-    let pendingItems: [LifeItem] = {
+    let allItems: [LifeItem] = {
       if case .loaded(let all) = viewModel.state {
-        return filterItems(all).filter { $0.status == .pendingReview }
+        return filterItems(all)
       }
       return []
     }()
+    let pendingItems = allItems.filter { $0.status == .pendingReview }
     let captures = captureViewModel?.captures ?? []
     let captureError = captureViewModel?.errorMessage
     let awaitingHistory = captureViewModel != nil
@@ -435,7 +446,43 @@ struct ItemsListView: View {
       if !captures.isEmpty {
         Section {
           ForEach(captures) { capture in
-            CaptureHistoryRowView(capture: capture)
+            let linkedItems = allItems.filter { $0.captureId == capture.id }
+            CaptureHistoryRowView(
+              capture: capture,
+              associatedItems: linkedItems,
+              isMutating: captureViewModel?.mutatingCaptureIDs.contains(capture.id) ?? false,
+              mutatingItemIDs: viewModel.mutatingItemIDs,
+              allowsMutations: capabilities.allowsItemMutations,
+              onConfirmItem: { item in
+                Task { await viewModel.confirmReview(item) }
+              },
+              onEditItem: { item in
+                if let onEditItem {
+                  onEditItem(item)
+                } else if let onSelectItem {
+                  onSelectItem(item)
+                } else {
+                  selectedItemID = item.id
+                }
+              },
+              onRetry: {
+                Task { await captureViewModel?.retryCapture(capture) }
+              },
+              onDelete: {
+                captureToDelete = capture
+                showDeleteCaptureConfirmation = true
+              }
+            )
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+              if capabilities.allowsItemMutations {
+                Button(role: .destructive) {
+                  captureToDelete = capture
+                  showDeleteCaptureConfirmation = true
+                } label: {
+                  Label("Delete", systemImage: "trash")
+                }
+              }
+            }
           }
         } header: {
           Label("Recent Captures (\(captures.count))", systemImage: "tray.and.arrow.down")
@@ -467,6 +514,19 @@ struct ItemsListView: View {
     }
     .listStyle(.insetGrouped)
     .refreshable { await refreshInbox() }
+    .alert(
+      "Delete this capture?",
+      isPresented: $showDeleteCaptureConfirmation,
+      presenting: captureToDelete
+    ) { capture in
+      Button("Delete Capture", role: .destructive) {
+        Task { _ = await captureViewModel?.deleteCapture(capture) }
+      }
+      .accessibilityIdentifier("confirmDeleteCapture")
+      Button("Cancel", role: .cancel) {}
+    } message: { _ in
+      Text("Original raw capture and any items extracted from it will be permanently removed.")
+    }
     .dialogModifiers(
       itemToDelete: $itemToDelete,
       showDeleteConfirmation: $showDeleteConfirmation,

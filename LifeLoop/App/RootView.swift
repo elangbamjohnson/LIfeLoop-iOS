@@ -114,6 +114,10 @@ struct RootView: View {
             captureViewModel.onItemsNeedsRefresh = { [weak viewModel] in
                 await viewModel?.refreshAfterCapture()
             }
+            captureViewModel.onCaptureDeleted = { [weak viewModel, localStore] captureID in
+                viewModel?.removeItems(forCaptureID: captureID)
+                try? localStore?.deleteItems(forCaptureID: captureID)
+            }
             captureViewModel.onSessionExpired = onSessionExpired
             captureViewModel.setForegroundActive(scenePhase == .active)
             guard scenePhase == .active else { return }
@@ -222,6 +226,7 @@ private struct TabNavigationView: View {
                             Menu {
                                 Button(role: .destructive) {
                                     captureViewModel.reset()
+                                    viewModel.reset()
                                     onSignOut()
                                 } label: {
                                     Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
@@ -273,6 +278,7 @@ private struct TabNavigationView: View {
                             Menu {
                                 Button(role: .destructive) {
                                     captureViewModel.reset()
+                                    viewModel.reset()
                                     onSignOut()
                                 } label: {
                                     Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")

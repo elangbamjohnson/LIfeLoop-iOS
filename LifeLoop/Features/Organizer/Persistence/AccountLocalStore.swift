@@ -54,6 +54,19 @@ final class AccountLocalStore {
     private let context: ModelContext
     private let scope: String
     private var active = true
+    private var deletedCaptureIDs: Set<UUID> = []
+    private var itemMutationEpoch = 0
+
+    var currentItemMutationEpoch: Int {
+        itemMutationEpoch
+    }
+
+    func filterActiveCaptureItems(_ items: [LifeItem]) -> [LifeItem] {
+        items.filter { item in
+            guard let captureId = item.captureId else { return true }
+            return !deletedCaptureIDs.contains(captureId)
+        }
+    }
 
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
         if !inMemory {
@@ -72,19 +85,29 @@ final class AccountLocalStore {
         scope = server.absoluteString + "|" + accountID.uuidString
     }
 
-    func saveItems(_ items: [LifeItem]) throws { try write(items, name: "items") }
+    func saveItems(_ items: [LifeItem]) throws {
+        try write(filterActiveCaptureItems(items), name: "items")
+    }
 
     func updateItem(_ updatedItem: LifeItem) throws {
+        if let captureId = updatedItem.captureId, deletedCaptureIDs.contains(captureId) {
+            return
+        }
         guard let snapshot = try readItems() else { return }
         var items = snapshot.items
         if let index = items.firstIndex(where: { $0.id == updatedItem.id }) {
             items[index] = updatedItem
+            itemMutationEpoch += 1
             try write(items, name: "items")
         }
     }
 
     func insertItem(_ newItem: LifeItem) throws {
+        if let captureId = newItem.captureId, deletedCaptureIDs.contains(captureId) {
+            return
+        }
         guard let snapshot = try readItems() else {
+            itemMutationEpoch += 1
             try saveItems([newItem])
             return
         }
@@ -94,6 +117,7 @@ final class AccountLocalStore {
         } else {
             items.insert(newItem, at: 0)
         }
+        itemMutationEpoch += 1
         try write(items, name: "items")
     }
 
@@ -102,6 +126,19 @@ final class AccountLocalStore {
         var items = snapshot.items
         let originalCount = items.count
         items.removeAll(where: { $0.id == id })
+        if items.count != originalCount {
+            itemMutationEpoch += 1
+            try write(items, name: "items")
+        }
+    }
+
+    func deleteItems(forCaptureID captureID: UUID) throws {
+        guard active else { throw CancellationError() }
+        deletedCaptureIDs.insert(captureID)
+        guard let snapshot = try readItems() else { return }
+        var items = snapshot.items
+        let originalCount = items.count
+        items.removeAll(where: { $0.captureId == captureID })
         if items.count != originalCount {
             try write(items, name: "items")
         }
@@ -130,6 +167,8 @@ final class AccountLocalStore {
 
     func purgeAndInvalidate() throws {
         active = false // A late request using this store cannot recreate purged data.
+        deletedCaptureIDs.removeAll()
+        itemMutationEpoch += 1
         let scope = scope
         let records = try context.fetch(FetchDescriptor<LocalRecord>(predicate: #Predicate { $0.scope == scope }))
         for record in records { context.delete(record) }

@@ -63,4 +63,34 @@ final class APICaptureRepository: CaptureRepository {
 
         return response.captures.map { $0.domainValue() }
     }
+
+    func retryCapture(id: UUID) async throws {
+        let (responseData, _) = try await client.request(
+            "api/v1/captures/\(id.uuidString.lowercased())/retry",
+            method: "POST",
+            body: Data("{}".utf8),
+            authenticated: true
+        )
+
+        guard let response = try? JSONDecoder().decode(CaptureActionResponse.self, from: responseData),
+              response.success != false else {
+            throw APIError.invalidResponse
+        }
+    }
+
+    func deleteCapture(id: UUID) async throws {
+        let (responseData, _) = try await client.request(
+            "api/v1/captures/\(id.uuidString.lowercased())",
+            method: "DELETE",
+            body: nil,
+            authenticated: true
+        )
+
+        if !responseData.isEmpty {
+            guard let response = try? JSONDecoder().decode(CaptureActionResponse.self, from: responseData),
+                  response.success != false else {
+                throw APIError.invalidResponse
+            }
+        }
+    }
 }
