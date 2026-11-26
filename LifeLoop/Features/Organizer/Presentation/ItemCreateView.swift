@@ -20,14 +20,16 @@ struct ItemCreateView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let availableTypes: [(id: String, label: String, icon: String)] = [
-        ("task", "Task", "tag"),
-        ("bill", "Bill / Financial", "creditcard"),
-        ("renewal", "Renewal", "arrow.clockwise"),
+        ("task", "Task / To-do", "tag"),
+        ("payment", "Payment / Bill", "creditcard"),
+        ("renewal", "Renewal / Expiry", "arrow.clockwise"),
         ("subscription", "Subscription", "repeat"),
         ("appointment", "Appointment", "calendar"),
         ("reminder", "Reminder", "bell"),
         ("warranty", "Warranty", "shield.checkerboard"),
         ("waiting_for", "Waiting For", "hourglass"),
+        ("deadline", "Deadline", "flag"),
+        ("purchase", "Purchase", "cart"),
         ("document", "Document", "doc.text")
     ]
 

@@ -184,6 +184,10 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertTrue(quickCapture.waitForExistence(timeout: 5))
         quickCapture.tap()
 
+        let createManually = app.buttons["openManualCreationButton"].firstMatch
+        XCTAssertTrue(createManually.waitForExistence(timeout: 5))
+        createManually.tap()
+
         let titleField = app.descendants(matching: .any)["createItemTitleField"].firstMatch
         XCTAssertTrue(titleField.waitForExistence(timeout: 5))
 
@@ -196,8 +200,11 @@ final class OrganizerUITests: XCTestCase {
         cancelButton.tap()
         XCTAssertTrue(quickCapture.waitForExistence(timeout: 5))
 
-        // Open creation modal again
+        // Open creation modal again via Quick Capture -> Create manually
         quickCapture.tap()
+        XCTAssertTrue(createManually.waitForExistence(timeout: 5))
+        createManually.tap()
+
         XCTAssertTrue(titleField.waitForExistence(timeout: 5))
         titleField.tap()
         titleField.typeText("Buy Organic Milk")
@@ -222,6 +229,103 @@ final class OrganizerUITests: XCTestCase {
             }
         }
         XCTAssertTrue(createdItem.waitForExistence(timeout: 5))
+    }
+
+    func testQuickCaptureFlow() {
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-testing")
+        app.launch()
+
+        let quickCapture = app.buttons["quickCaptureButton"].firstMatch
+        XCTAssertTrue(quickCapture.waitForExistence(timeout: 5))
+        quickCapture.tap()
+
+        let textInput = app.descendants(matching: .any)["captureTextInput"].firstMatch
+        XCTAssertTrue(textInput.waitForExistence(timeout: 5))
+
+        let saveButton = app.buttons["saveCaptureButton"].firstMatch
+        XCTAssertFalse(saveButton.isEnabled)
+
+        textInput.tap()
+        textInput.typeText("Pay electricity bill tomorrow and renew car insurance")
+        XCTAssertTrue(saveButton.isEnabled)
+
+        saveButton.tap()
+        _ = saveButton.waitForNonExistence(timeout: 5)
+
+        let inboxTab = app.buttons["Inbox"].firstMatch
+        XCTAssertTrue(inboxTab.waitForExistence(timeout: 5))
+        inboxTab.tap()
+
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Recent Captures'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Pay electricity bill'")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testInboxHistoryVisibleWithoutItemsAndWhenItemsFail() {
+        let app = XCUIApplication()
+        for itemState in ["--empty-items", "--failed-items"] {
+            app.launchArguments = ["--ui-testing", itemState]
+            app.launch()
+            app.buttons["Inbox"].firstMatch.tap()
+            let completed = app.descendants(matching: .any)["captureRow-10000000-0000-0000-0000-000000000001"].firstMatch
+            let pending = app.descendants(matching: .any)["captureRow-10000000-0000-0000-0000-000000000002"].firstMatch
+            XCTAssertTrue(completed.waitForExistence(timeout: 10))
+            XCTAssertTrue(pending.exists)
+            if itemState == "--failed-items" {
+                XCTAssertTrue(app.buttons["Retry items"].waitForExistence(timeout: 5))
+            }
+            app.terminate()
+        }
+    }
+
+    func testCaptureFailureRetainsExactDraftAndRetrySucceeds() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--empty-items", "--empty-captures", "--fail-first-capture"]
+        app.launch()
+        app.buttons["quickCaptureButton"].firstMatch.tap()
+        let input = app.textViews["captureTextInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5), app.debugDescription)
+        let draft = "Pay bill tomorrow\nand renew passport"
+        input.tap()
+        input.typeText(draft)
+        let save = app.buttons["saveCaptureButton"]
+        save.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["captureErrorMessage"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, draft)
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        app.buttons["Inbox"].firstMatch.tap()
+        let capture = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'captureRow-' AND label CONTAINS %@", "Pay bill tomorrow")
+        ).firstMatch
+        XCTAssertTrue(capture.waitForExistence(timeout: 10))
+        XCTAssertTrue(capture.label.contains("Pending"))
+    }
+
+    func testHistoryFailureKeepsReviewItemsAndRetryAvailable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--failed-captures"]
+        app.launch()
+        app.buttons["Inbox"].firstMatch.tap()
+        let retry = app.buttons["retryCaptureHistory"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 10))
+        let reviewItem = app.descendants(matching: .any)[secondID].firstMatch
+        XCTAssertTrue(reviewItem.waitForExistence(timeout: 5))
+        retry.tap()
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        XCTAssertTrue(reviewItem.exists)
+    }
+
+    func testEmptyInboxUsesEmptyCaptureFixture() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--empty-items", "--empty-captures"]
+        app.launch()
+        app.buttons["Inbox"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Captures and incoming items will appear here."].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["captureRow-10000000-0000-0000-0000-000000000001"].exists)
+        app.swipeDown()
+        XCTAssertTrue(app.staticTexts["Captures and incoming items will appear here."].waitForExistence(timeout: 5))
     }
 
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {

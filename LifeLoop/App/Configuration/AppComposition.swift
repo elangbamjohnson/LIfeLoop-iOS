@@ -30,6 +30,7 @@ final class ConnectedServices {
     let container: Result<ModelContainer, Error>
     let accountRepository: APIAccountRepository
     let itemRepository: APIItemRepository
+    let captureRepository: APICaptureRepository
 
     init(baseURL: URL) {
         server = baseURL
@@ -41,5 +42,6 @@ final class ConnectedServices {
         )
         accountRepository = APIAccountRepository(client: client)
         itemRepository = APIItemRepository(client: client)
+        captureRepository = APICaptureRepository(client: client)
     }
 }

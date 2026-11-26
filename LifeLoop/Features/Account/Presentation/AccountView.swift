@@ -8,14 +8,16 @@ struct AccountView: View {
     private let server: URL
     private let container: Result<ModelContainer, Error>
     private let itemRepository: any ItemRepository
+    private let captureRepository: any CaptureRepository
 
-    init(accountRepository: any AccountRepository, itemRepository: any ItemRepository, server: URL, container: Result<ModelContainer, Error>) {
+    init(accountRepository: any AccountRepository, itemRepository: any ItemRepository, captureRepository: any CaptureRepository, server: URL, container: Result<ModelContainer, Error>) {
         self.server = server
         self.container = container
         let googleSignIn = GoogleSignInService()
         self.googleSignIn = googleSignIn
         self.viewModel = AccountViewModel(repository: accountRepository, googleIdentity: googleSignIn)
         self.itemRepository = itemRepository
+        self.captureRepository = captureRepository
     }
 
     var body: some View {
@@ -27,7 +29,8 @@ struct AccountView: View {
                 signInForm
             case .signedIn(let account):
                 ConnectedOrganizerView(account: account, server: server, container: container,
-                                       remote: itemRepository, onSignOut: { viewModel.signOut() },
+                                       remote: itemRepository, captureRepository: captureRepository,
+                                       onSignOut: { viewModel.signOut() },
                                        onSessionExpired: { viewModel.handleUnauthorized() })
                     .id(account.id)
 

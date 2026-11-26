@@ -14,12 +14,15 @@ struct RootView: View {
     let onSessionExpired: () -> Void
     let onSignOut: (() -> Void)?
     @State private var viewModel: ItemsListViewModel
+    @State private var captureViewModel: CaptureViewModel
     @State private var selectedItemID: UUID?
     // The root outlives adaptive column changes, so it owns the active editor.
     @State private var editingItem: LifeItem?
+    @State private var isQuickCapturePresented = false
     @State private var isCreatingItem = false
     @State private var selectedTab: OrganizerTab = .priority
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     var allowsEditing: Bool {
         capabilities.allowsTitleEditing || capabilities.allowsItemMutations
@@ -27,6 +30,7 @@ struct RootView: View {
 
     init(
         repository: any ItemRepository,
+        captureRepository: any CaptureRepository = SampleCaptureRepository(),
         capabilities: OrganizerCapabilities = .demo,
         localStore: AccountLocalStore? = nil,
         onSessionExpired: @escaping () -> Void = {},
@@ -37,10 +41,12 @@ struct RootView: View {
         self.onSessionExpired = onSessionExpired
         self.onSignOut = onSignOut
         self.viewModel = ItemsListViewModel(repository: repository)
+        self.captureViewModel = CaptureViewModel(repository: captureRepository)
     }
 
     init(
         repository: any ItemRepository,
+        captureRepository: any CaptureRepository = SampleCaptureRepository(),
         allowsEditing: Bool,
         localStore: AccountLocalStore? = nil,
         onSessionExpired: @escaping () -> Void = {},
@@ -48,6 +54,7 @@ struct RootView: View {
     ) {
         self.init(
             repository: repository,
+            captureRepository: captureRepository,
             capabilities: allowsEditing ? .demo : .none,
             localStore: localStore,
             onSessionExpired: onSessionExpired,
@@ -60,10 +67,11 @@ struct RootView: View {
             TabNavigationView(
                 tab: .priority,
                 viewModel: viewModel,
+                captureViewModel: captureViewModel,
                 capabilities: capabilities,
                 editingItem: $editingItem,
                 selectedItemID: $selectedItemID,
-                onCreateItem: { isCreatingItem = true },
+                onCreateItem: { isQuickCapturePresented = true },
                 onSignOut: onSignOut
             )
             .tabItem {
@@ -74,10 +82,11 @@ struct RootView: View {
             TabNavigationView(
                 tab: .timeline,
                 viewModel: viewModel,
+                captureViewModel: captureViewModel,
                 capabilities: capabilities,
                 editingItem: $editingItem,
                 selectedItemID: $selectedItemID,
-                onCreateItem: { isCreatingItem = true },
+                onCreateItem: { isQuickCapturePresented = true },
                 onSignOut: onSignOut
             )
             .tabItem {
@@ -88,10 +97,11 @@ struct RootView: View {
             TabNavigationView(
                 tab: .inbox,
                 viewModel: viewModel,
+                captureViewModel: captureViewModel,
                 capabilities: capabilities,
                 editingItem: $editingItem,
                 selectedItemID: $selectedItemID,
-                onCreateItem: { isCreatingItem = true },
+                onCreateItem: { isQuickCapturePresented = true },
                 onSignOut: onSignOut
             )
             .tabItem {
@@ -100,8 +110,41 @@ struct RootView: View {
             .tag(OrganizerTab.inbox)
         }
         .tint(tabTint(for: selectedTab))
+        .task(id: scenePhase) {
+            captureViewModel.onItemsNeedsRefresh = { [weak viewModel] in
+                await viewModel?.refreshAfterCapture()
+            }
+            captureViewModel.onSessionExpired = onSessionExpired
+            captureViewModel.setForegroundActive(scenePhase == .active)
+            guard scenePhase == .active else { return }
+            await captureViewModel.loadCaptures()
+            if !Task.isCancelled { captureViewModel.startPollingIfNeeded() }
+        }
+        .task(id: selectedTab) {
+            guard selectedTab == .inbox, scenePhase == .active else { return }
+            await captureViewModel.loadCaptures()
+            if !Task.isCancelled { captureViewModel.startPollingIfNeeded() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Invalidate immediately, before a suspended refresh can resume.
+            captureViewModel.setForegroundActive(phase == .active)
+        }
+        .onDisappear { captureViewModel.setForegroundActive(false) }
         .onChange(of: viewModel.requiresSignIn) { _, expired in
-            if expired { onSessionExpired() }
+            if expired {
+                captureViewModel.reset()
+                onSessionExpired()
+            }
+        }
+        .sheet(isPresented: $isQuickCapturePresented) {
+            CaptureComposerView(
+                onCapture: { text in
+                    _ = try await captureViewModel.submitTextCapture(text)
+                },
+                onOpenManualCreation: {
+                    isCreatingItem = true
+                }
+            )
         }
         .sheet(isPresented: $isCreatingItem) {
             NavigationStack {
@@ -145,6 +188,7 @@ struct RootView: View {
 private struct TabNavigationView: View {
     let tab: OrganizerTab
     let viewModel: ItemsListViewModel
+    let captureViewModel: CaptureViewModel
     let capabilities: OrganizerCapabilities
     @Binding var editingItem: LifeItem?
     @Binding var selectedItemID: UUID?
@@ -158,6 +202,7 @@ private struct TabNavigationView: View {
             NavigationStack(path: $navigationPath) {
                 ItemsListView(
                     viewModel: viewModel,
+                    captureViewModel: captureViewModel,
                     tab: tab,
                     capabilities: capabilities,
                     onEditItem: { item in
@@ -176,6 +221,7 @@ private struct TabNavigationView: View {
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
                                 Button(role: .destructive) {
+                                    captureViewModel.reset()
                                     onSignOut()
                                 } label: {
                                     Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
@@ -208,6 +254,7 @@ private struct TabNavigationView: View {
             NavigationSplitView {
                 ItemsListView(
                     viewModel: viewModel,
+                    captureViewModel: captureViewModel,
                     tab: tab,
                     capabilities: capabilities,
                     onEditItem: { item in
@@ -225,6 +272,7 @@ private struct TabNavigationView: View {
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
                                 Button(role: .destructive) {
+                                    captureViewModel.reset()
                                     onSignOut()
                                 } label: {
                                     Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
