@@ -46,6 +46,24 @@ struct Capture: Identifiable, Equatable, Sendable {
         self.updatedAt = updatedAt
     }
 
+    var aiEnrichmentFailed: Bool {
+        metadata["aiEnrichmentFailed"] == .bool(true)
+    }
+
+    var canRetry: Bool {
+        processingStatus == .failed || aiEnrichmentFailed
+    }
+
+    var statusDisplayLabel: String {
+        if processingStatus == .completed && aiEnrichmentFailed {
+            return "Saved (AI unavailable)"
+        }
+        if processingStatus == .fallbackPendingRetry {
+            return "Enriching with AI"
+        }
+        return processingStatus.displayLabel
+    }
+
     var previewText: String {
         let trimmed = rawPayload.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "Empty capture" }

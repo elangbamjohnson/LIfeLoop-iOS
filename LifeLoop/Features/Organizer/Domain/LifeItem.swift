@@ -18,6 +18,7 @@ struct LifeItem: Identifiable, Codable, Equatable {
     var revision: Int?
     var snoozedUntil: String?
     var createdAt: String?
+    var captureId: UUID? = nil
 }
 
 extension LifeItem {

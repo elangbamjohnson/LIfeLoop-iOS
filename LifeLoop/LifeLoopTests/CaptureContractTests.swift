@@ -225,6 +225,86 @@ struct CaptureContractTests {
         #expect(singleLine.previewText == "Single line only")
     }
 
+    @Test func retryCaptureSendsPOSTWithTimezoneAndDecodesSuccess() async throws {
+        let transport = CaptureTestTransport()
+        let store = CaptureTestCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: Date().addingTimeInterval(3600))
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APICaptureRepository(client: client)
+        let captureID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+
+        transport.handler = { request in
+            #expect(request.url?.path == "/api/v1/captures/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/retry")
+            #expect(request.httpMethod == "POST")
+            #expect(request.value(forHTTPHeaderField: "Cookie") == "session=test-token")
+            #expect(request.value(forHTTPHeaderField: "X-Timezone") == TimeZone.current.identifier)
+            return self.response(#"{"success":true,"message":"AI retry initiated"}"#, status: 200)
+        }
+
+        try await repository.retryCapture(id: captureID)
+    }
+
+    @Test func deleteCaptureSendsDELETEAndHandlesSuccess() async throws {
+        let transport = CaptureTestTransport()
+        let store = CaptureTestCredentials()
+        store.credential = SessionCredential(token: "test-token", expiresAt: Date().addingTimeInterval(3600))
+        let client = APIClient(baseURL: server, transport: transport, credentials: store)
+        let repository = APICaptureRepository(client: client)
+        let captureID = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+
+        transport.handler = { request in
+            #expect(request.url?.path == "/api/v1/captures/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            #expect(request.httpMethod == "DELETE")
+            #expect(request.value(forHTTPHeaderField: "Cookie") == "session=test-token")
+            return self.response(#"{"success":true}"#, status: 200)
+        }
+
+        try await repository.deleteCapture(id: captureID)
+    }
+
+    @Test func itemDTODecodesCaptureIdAndCaptureMetadataFlags() throws {
+        let json = """
+        {
+            "items": [
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "title": "Pay water bill",
+                    "status": "pending_review",
+                    "itemType": "bill",
+                    "captureId": "22222222-2222-2222-2222-222222222222",
+                    "revision": 1
+                },
+                {
+                    "id": "33333333-3333-3333-3333-333333333333",
+                    "title": "Manual item",
+                    "status": "active",
+                    "itemType": "task",
+                    "captureId": null,
+                    "revision": 1
+                }
+            ]
+        }
+        """
+        let decoded = try JSONDecoder().decode(ItemListResponse.self, from: Data(json.utf8))
+        let items = try decoded.items.map { try $0.domainValue() }
+        #expect(items[0].captureId == UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
+        #expect(items[1].captureId == nil)
+
+        let aiUnavailable = Capture(
+            id: UUID(),
+            rawPayload: "Raw text",
+            processingStatus: .completed,
+            metadata: ["aiEnrichmentFailed": .bool(true)]
+        )
+        #expect(aiUnavailable.aiEnrichmentFailed)
+        #expect(aiUnavailable.canRetry)
+        #expect(aiUnavailable.statusDisplayLabel == "Saved (AI unavailable)")
+
+        let retrying = Capture(id: UUID(), rawPayload: "Raw text", processingStatus: .fallbackPendingRetry)
+        #expect(retrying.statusDisplayLabel == "Enriching with AI")
+        #expect(!retrying.canRetry)
+    }
+
     private func response(_ json: String, status: Int = 200, headers: [String: String] = [:]) -> (Data, HTTPURLResponse) {
         (Data(json.utf8), HTTPURLResponse(url: server, statusCode: status, httpVersion: nil, headerFields: headers)!)
     }

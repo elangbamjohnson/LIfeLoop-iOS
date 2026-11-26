@@ -29,6 +29,7 @@ final class ItemsListViewModel {
 
     private let repository: any ItemRepository
     private var loadGeneration = 0
+    private var deletedCaptureIDs: Set<UUID> = []
 
     init(repository: any ItemRepository) {
         self.repository = repository
@@ -55,7 +56,8 @@ final class ItemsListViewModel {
                 return
             }
 
-            state = items.isEmpty ? .empty : .loaded(items)
+            let activeItems = filterDeletedCaptureItems(items)
+            state = activeItems.isEmpty ? .empty : .loaded(activeItems)
             lastLoadedAt = repository.cacheDate ?? Date()
             showingCache = repository.cacheDate != nil
         } catch {
@@ -213,6 +215,33 @@ final class ItemsListViewModel {
 
     func refreshAfterCapture() async {
         await load(preservingContent: true)
+    }
+
+    func removeItems(forCaptureID captureID: UUID) {
+        deletedCaptureIDs.insert(captureID)
+        guard case .loaded(let currentItems) = state else { return }
+        let remaining = currentItems.filter { $0.captureId != captureID }
+        guard remaining.count != currentItems.count else { return }
+        state = remaining.isEmpty ? .empty : .loaded(remaining)
+    }
+
+    func reset() {
+        loadGeneration += 1
+        deletedCaptureIDs.removeAll()
+        state = .idle
+        lastLoadedAt = nil
+        showingCache = false
+        requiresSignIn = false
+        refreshError = nil
+        actionError = nil
+        mutatingItemIDs = []
+    }
+
+    private func filterDeletedCaptureItems(_ items: [LifeItem]) -> [LifeItem] {
+        items.filter { item in
+            guard let captureId = item.captureId else { return true }
+            return !deletedCaptureIDs.contains(captureId)
+        }
     }
 
     func forceLoad() async {

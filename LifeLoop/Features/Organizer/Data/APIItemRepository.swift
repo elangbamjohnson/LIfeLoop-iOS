@@ -172,6 +172,7 @@ struct ItemDTO: Decodable {
     let revision: Int?
     let snoozedUntil: String?
     let createdAt: String?
+    let captureId: UUID?
 
     func domainValue() throws -> LifeItem {
         let mappedStatus: ItemStatus
@@ -197,7 +198,8 @@ struct ItemDTO: Decodable {
         return LifeItem(
             id: id, title: title, status: mappedStatus, itemType: itemType,
             dueDate: date, metadata: metadata ?? [:], updatedAt: updatedAt,
-            revision: revision, snoozedUntil: snoozedUntil, createdAt: createdAt
+            revision: revision, snoozedUntil: snoozedUntil, createdAt: createdAt,
+            captureId: captureId
         )
     }
 }

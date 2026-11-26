@@ -56,6 +56,7 @@ struct LifeLoopApp: App {
             ? SampleCaptureRepository(captures: []) : SampleCaptureRepository()
         repository.shouldFail = arguments.contains("--failed-captures")
         repository.failNextSubmission = arguments.contains("--fail-first-capture")
+        repository.shouldFailMutation = arguments.contains("--fail-capture-action")
         return repository
         #else
         return SampleCaptureRepository()

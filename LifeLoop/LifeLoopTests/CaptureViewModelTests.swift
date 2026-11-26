@@ -337,6 +337,220 @@ struct CaptureViewModelTests {
         #expect(model.errorMessage == nil)
         model.stopPolling()
     }
+
+    @Test func retryCaptureClearsFailureFlagTransitionsToFallbackAndRefreshes() async {
+        let captureID = UUID()
+        let failedCapture = Capture(
+            id: captureID,
+            rawPayload: "Retry this capture",
+            processingStatus: .failed,
+            retryCount: 2,
+            metadata: ["aiEnrichmentFailed": .bool(true), "lastRetryError": .string("Timeout")]
+        )
+        let repository = ControlledCaptureRepository()
+        repository.captures = [failedCapture]
+        let model = model(repository)
+        var refreshCount = 0
+        model.onItemsNeedsRefresh = { refreshCount += 1 }
+        await model.loadCaptures()
+
+        await model.retryCapture(failedCapture)
+
+        #expect(repository.retryCount == 1)
+        #expect(repository.fetchCount == 2)
+        #expect(refreshCount == 2)
+        #expect(model.actionError == nil)
+        #expect(model.mutatingCaptureIDs.isEmpty)
+        let updated = model.captures.first(where: { $0.id == captureID })
+        #expect(updated?.processingStatus == .fallbackPendingRetry)
+        #expect(updated?.aiEnrichmentFailed == false)
+        #expect(updated?.statusDisplayLabel == "Enriching with AI")
+        model.stopPolling()
+    }
+
+    @Test func concurrentRetryForSameCaptureIsIgnoredAndFailurePreservesHistory() async {
+        let captureID = UUID()
+        let failedCapture = Capture(
+            id: captureID,
+            rawPayload: "Concurrent retry",
+            processingStatus: .failed,
+            metadata: ["aiEnrichmentFailed": .bool(true)]
+        )
+        let repository = ControlledCaptureRepository()
+        repository.captures = [failedCapture]
+        let retryGate = RequestGate<Void>()
+        repository.retryRequests = [retryGate]
+        let model = model(repository)
+        await model.loadCaptures()
+
+        let first = Task { await model.retryCapture(failedCapture) }
+        await retryGate.waitUntilStarted()
+        #expect(model.mutatingCaptureIDs.contains(captureID))
+        let second = Task { await model.retryCapture(failedCapture) }
+        await Task.yield()
+        #expect(repository.retryCount == 1)
+
+        retryGate.resolve(.failure(APIError.server(500)))
+        await first.value
+        await second.value
+
+        #expect(model.mutatingCaptureIDs.isEmpty)
+        #expect(model.actionError != nil)
+        #expect(model.captures == [failedCapture])
+        model.stopPolling()
+    }
+
+    @Test func deleteCaptureRemovesRowFiresCallbackAndBlocksConcurrentDuplicates() async {
+        let firstID = UUID()
+        let secondID = UUID()
+        let first = capture(.completed, id: firstID)
+        let second = capture(.pending, id: secondID)
+        let repository = ControlledCaptureRepository()
+        repository.captures = [first, second]
+        let deleteGate = RequestGate<Void>()
+        repository.deleteRequests = [deleteGate]
+        let model = model(repository)
+        var deletedIDs: [UUID] = []
+        model.onCaptureDeleted = { deletedIDs.append($0) }
+        await model.loadCaptures()
+
+        let task1 = Task { await model.deleteCapture(first) }
+        await deleteGate.waitUntilStarted()
+        #expect(model.mutatingCaptureIDs.contains(firstID))
+        let task2 = Task { await model.deleteCapture(first) }
+        await Task.yield()
+        #expect(repository.deleteCount == 1)
+
+        deleteGate.resolve(.success(()))
+        let result1 = await task1.value
+        let result2 = await task2.value
+
+        #expect(result1 == true)
+        #expect(result2 == false)
+        #expect(deletedIDs == [firstID])
+        #expect(model.captures.map(\.id) == [secondID])
+        #expect(model.actionError == nil)
+        model.stopPolling()
+    }
+
+    @Test func deleteCaptureFailureAndUnauthorizedActionsHandleStateSafely() async {
+        let captureItem = capture(.completed)
+        let repository = ControlledCaptureRepository()
+        repository.captures = [captureItem]
+        let failureGate = RequestGate<Void>()
+        failureGate.resolve(.failure(APIError.server(500)))
+        repository.deleteRequests = [failureGate]
+        let model = model(repository)
+        var deletedIDs: [UUID] = []
+        var expiredCount = 0
+        model.onCaptureDeleted = { deletedIDs.append($0) }
+        model.onSessionExpired = { expiredCount += 1 }
+        await model.loadCaptures()
+
+        let deleted = await model.deleteCapture(captureItem)
+        #expect(deleted == false)
+        #expect(deletedIDs.isEmpty)
+        #expect(model.captures == [captureItem])
+        #expect(model.actionError != nil)
+
+        let authGate = RequestGate<Void>()
+        authGate.resolve(.failure(APIError.unauthorized))
+        repository.retryRequests = [authGate]
+        await model.retryCapture(captureItem)
+        #expect(expiredCount == 1)
+        #expect(model.requiresSignIn)
+        #expect(model.captures.isEmpty)
+    }
+
+    @Test func resetIgnoresStaleInFlightRetryAndDeleteCompletions() async {
+        let item = capture(.failed)
+        let repository = ControlledCaptureRepository()
+        repository.captures = [item]
+        let deleteGate = RequestGate<Void>()
+        repository.deleteRequests = [deleteGate]
+        let model = model(repository)
+        var deletedIDs: [UUID] = []
+        model.onCaptureDeleted = { deletedIDs.append($0) }
+        await model.loadCaptures()
+
+        let task = Task { await model.deleteCapture(item) }
+        await deleteGate.waitUntilStarted()
+        model.reset()
+        deleteGate.resolve(.success(()))
+        let result = await task.value
+
+        #expect(result == false)
+        #expect(deletedIDs.isEmpty)
+        #expect(model.mutatingCaptureIDs.isEmpty)
+        #expect(model.actionError == nil)
+    }
+
+    @Test func deletedCaptureIsNotRestoredByInFlightHistoryResponse() async {
+        let captureA = Capture(id: UUID(), rawPayload: "Capture A", processingStatus: .completed, createdAt: Date())
+        let captureB = Capture(id: UUID(), rawPayload: "Capture B", processingStatus: .completed, createdAt: Date().addingTimeInterval(-60))
+        let repository = ControlledCaptureRepository()
+        repository.captures = [captureA, captureB]
+        let model = model(repository)
+        await model.loadCaptures()
+        #expect(model.captures.map(\.id) == [captureA.id, captureB.id])
+
+        let staleFetch = RequestGate<[Capture]>()
+        repository.fetchRequests = [staleFetch]
+
+        let fetchTask = Task { await model.loadCaptures() }
+        await staleFetch.waitUntilStarted()
+
+        let deleted = await model.deleteCapture(captureA)
+        #expect(deleted == true)
+        #expect(model.captures.map(\.id) == [captureB.id])
+
+        staleFetch.resolve(.success([captureA, captureB]))
+        await fetchTask.value
+
+        #expect(model.captures.map(\.id) == [captureB.id])
+        #expect(!model.isLoading)
+        #expect(model.mutatingCaptureIDs.isEmpty)
+
+        // Fresh fetch and Retry AI after deletion succeed normally.
+        let captureC = Capture(id: UUID(), rawPayload: "Capture C", processingStatus: .failed, createdAt: Date().addingTimeInterval(60))
+        repository.captures = [captureC, captureB]
+        await model.loadCaptures()
+        #expect(model.captures.map(\.id) == [captureC.id, captureB.id])
+        await model.retryCapture(captureC)
+        #expect(model.captures.first(where: { $0.id == captureC.id })?.processingStatus == .fallbackPendingRetry)
+        #expect(model.mutatingCaptureIDs.isEmpty)
+        model.stopPolling()
+    }
+
+    @Test func staleHistoryResponseAfterResetCannotRestorePreviousSessionData() async {
+        let captureA = Capture(id: UUID(), rawPayload: "Account 1 Capture", processingStatus: .completed, createdAt: Date())
+        let repository = ControlledCaptureRepository()
+        repository.captures = [captureA]
+        let model = model(repository)
+        await model.loadCaptures()
+
+        let preResetFetch = RequestGate<[Capture]>()
+        repository.fetchRequests = [preResetFetch]
+        let oldTask = Task { await model.loadCaptures() }
+        await preResetFetch.waitUntilStarted()
+
+        model.reset()
+        model.setForegroundActive(true)
+        #expect(model.captures.isEmpty)
+
+        preResetFetch.resolve(.success([captureA]))
+        await oldTask.value
+
+        #expect(model.captures.isEmpty)
+        #expect(!model.isLoading)
+
+        // Subsequent fresh session fetch works cleanly.
+        let captureNew = Capture(id: UUID(), rawPayload: "Account 2 Capture", processingStatus: .completed, createdAt: Date())
+        repository.captures = [captureNew]
+        await model.loadCaptures()
+        #expect(model.captures.map(\.id) == [captureNew.id])
+        model.stopPolling()
+    }
 }
 
 /// Deliberately ignores cancellation so tests can release stale responses in any order.
@@ -372,8 +586,12 @@ private final class ControlledCaptureRepository: CaptureRepository {
     var captures: [Capture] = []
     var fetchRequests: [RequestGate<[Capture]>] = []
     var createRequests: [RequestGate<Capture>] = []
+    var retryRequests: [RequestGate<Void>] = []
+    var deleteRequests: [RequestGate<Void>] = []
     private(set) var fetchCount = 0
     private(set) var createCount = 0
+    private(set) var retryCount = 0
+    private(set) var deleteCount = 0
 
     func fetchCaptures() async throws -> [Capture] {
         fetchCount += 1
@@ -387,5 +605,38 @@ private final class ControlledCaptureRepository: CaptureRepository {
         let created = Capture(id: UUID(), source: source, rawPayload: text)
         captures.insert(created, at: 0)
         return created
+    }
+
+    func retryCapture(id: UUID) async throws {
+        retryCount += 1
+        if !retryRequests.isEmpty {
+            try await retryRequests.removeFirst().value()
+        }
+        if let index = captures.firstIndex(where: { $0.id == id }) {
+            var metadata = captures[index].metadata
+            metadata["aiEnrichmentFailed"] = .bool(false)
+            metadata.removeValue(forKey: "lastRetryError")
+            captures[index] = Capture(
+                id: captures[index].id,
+                source: captures[index].source,
+                type: captures[index].type,
+                rawPayload: captures[index].rawPayload,
+                originalFilename: captures[index].originalFilename,
+                mimeType: captures[index].mimeType,
+                processingStatus: .fallbackPendingRetry,
+                retryCount: 0,
+                metadata: metadata,
+                createdAt: captures[index].createdAt,
+                updatedAt: Date()
+            )
+        }
+    }
+
+    func deleteCapture(id: UUID) async throws {
+        deleteCount += 1
+        if !deleteRequests.isEmpty {
+            try await deleteRequests.removeFirst().value()
+        }
+        captures.removeAll { $0.id == id }
     }
 }

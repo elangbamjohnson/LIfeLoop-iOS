@@ -135,6 +135,220 @@ struct CachedItemRepositoryTests {
         #expect(snapshot?.items.first?.id == createdItem.id)
         #expect(snapshot?.items.first?.title == "Cached Created Item")
     }
+
+    @Test func deletedCaptureItemsAreNotRestoredToViewModelOrDiskCacheByStaleFetch() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("cache.store")
+        let server = URL(string: "https://example.com")!
+        let accountID = UUID()
+
+        func openStore() throws -> AccountLocalStore {
+            let container = try ModelContainer(for: LocalRecord.self, configurations:
+                ModelConfiguration("RaceB", url: url, cloudKitDatabase: .none))
+            return AccountLocalStore(container: container, server: server, accountID: accountID)
+        }
+
+        let captureA = UUID()
+        let itemA = LifeItem(id: UUID(), title: "Extracted from A", status: .pendingReview, revision: 1, captureId: captureA)
+        let itemB = LifeItem(id: UUID(), title: "Unrelated item", status: .active, revision: 1)
+
+        let store = try openStore()
+        let remote = CacheTestRemote()
+        remote.itemsToReturn = [itemA, itemB]
+        let repository = CachedItemRepository(remote: remote, store: store)
+        let viewModel = ItemsListViewModel(repository: repository)
+
+        await viewModel.load()
+        #expect(viewModel.items.map(\.id) == [itemA.id, itemB.id])
+        #expect(try store.readItems()?.items.map(\.id) == [itemA.id, itemB.id])
+
+        let staleFetch = CacheRequestGate<[LifeItem]>()
+        remote.fetchRequests = [staleFetch]
+        let refreshTask = Task { await viewModel.refreshAfterCapture() }
+        await staleFetch.waitUntilStarted()
+
+        // Complete capture A's deletion and local cleanup while the item fetch is still in flight.
+        viewModel.removeItems(forCaptureID: captureA)
+        try store.deleteItems(forCaptureID: captureA)
+        #expect(viewModel.items.map(\.id) == [itemB.id])
+        #expect(try store.readItems()?.items.map(\.id) == [itemB.id])
+
+        // Underlying transport ignores cancellation and delivers the stale pre-delete snapshot.
+        staleFetch.resolve(.success([itemA, itemB]))
+        await refreshTask.value
+
+        #expect(viewModel.items.map(\.id) == [itemB.id])
+        #expect(try store.readItems()?.items.map(\.id) == [itemB.id])
+
+        // Reopen a fresh store consumer & perform an offline fetch to prove disk cache stays clean.
+        let freshStore = try openStore()
+        #expect(try freshStore.readItems()?.items.map(\.id) == [itemB.id])
+        let offlineRemote = CacheTestRemote()
+        offlineRemote.failure = URLError(.notConnectedToInternet)
+        let offlineRepo = CachedItemRepository(remote: offlineRemote, store: freshStore)
+        let offlineItems = try await offlineRepo.fetchItems()
+        #expect(offlineItems.map(\.id) == [itemB.id])
+        #expect(offlineRepo.cacheDate != nil)
+    }
+
+    @Test func captureDeletionWhileItemsViewModelIsLoadingExcludesDeletedItemsAndEndsLoading() async throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true),
+                                      server: URL(string: "https://example.com")!, accountID: UUID())
+        let remote = CacheTestRemote()
+        let repository = CachedItemRepository(remote: remote, store: store)
+        let viewModel = ItemsListViewModel(repository: repository)
+
+        let captureA = UUID()
+        let itemA = LifeItem(id: UUID(), title: "Extracted from A", status: .pendingReview, revision: 1, captureId: captureA)
+        let itemB = LifeItem(id: UUID(), title: "Unrelated item", status: .active, revision: 1)
+
+        let loadingGate = CacheRequestGate<[LifeItem]>()
+        remote.fetchRequests = [loadingGate]
+
+        let loadTask = Task { await viewModel.forceLoad() }
+        await loadingGate.waitUntilStarted()
+        guard case .loading = viewModel.state else {
+            Issue.record("Expected ItemsListViewModel to be in .loading state")
+            return
+        }
+
+        // Deletion completes while ItemsListViewModel is still loading.
+        viewModel.removeItems(forCaptureID: captureA)
+        try store.deleteItems(forCaptureID: captureA)
+
+        loadingGate.resolve(.success([itemA, itemB]))
+        await loadTask.value
+
+        #expect(viewModel.items.map(\.id) == [itemB.id])
+        #expect(try store.readItems()?.items.map(\.id) == [itemB.id])
+
+        // Subsequent legitimate refresh works normally.
+        let itemC = LifeItem(id: UUID(), title: "Fresh item", status: .active, revision: 1)
+        remote.itemsToReturn = [itemC, itemB]
+        await viewModel.refreshAfterCapture()
+        #expect(viewModel.items.map(\.id) == [itemC.id, itemB.id])
+        #expect(try store.readItems()?.items.map(\.id) == [itemC.id, itemB.id])
+    }
+
+    @Test func failedCaptureDeletePreservesRowItemsAndOfflineCache() async throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true),
+                                      server: URL(string: "https://example.com")!, accountID: UUID())
+        let remote = CacheTestRemote()
+        let captureA = Capture(id: UUID(), rawPayload: "Capture A", processingStatus: .completed, createdAt: Date())
+        let itemA = LifeItem(id: UUID(), title: "Extracted A", status: .pendingReview, revision: 1, captureId: captureA.id)
+        let itemB = LifeItem(id: UUID(), title: "Unrelated B", status: .active, revision: 1)
+        remote.itemsToReturn = [itemA, itemB]
+
+        let itemRepo = CachedItemRepository(remote: remote, store: store)
+        let itemsVM = ItemsListViewModel(repository: itemRepo)
+        let captureRepo = CacheTestCaptureRepository(captures: [captureA], deleteFailure: APIError.server(500))
+        let captureVM = CaptureViewModel(repository: captureRepo)
+        captureVM.setForegroundActive(true)
+        captureVM.onCaptureDeleted = { id in
+            itemsVM.removeItems(forCaptureID: id)
+            try? store.deleteItems(forCaptureID: id)
+        }
+
+        await captureVM.loadCaptures()
+        await itemsVM.load()
+        #expect(captureVM.captures.map(\.id) == [captureA.id])
+        #expect(itemsVM.items.map(\.id) == [itemA.id, itemB.id])
+
+        let deleted = await captureVM.deleteCapture(captureA)
+        #expect(deleted == false)
+        #expect(captureVM.actionError != nil)
+        #expect(captureVM.captures.map(\.id) == [captureA.id])
+        #expect(itemsVM.items.map(\.id) == [itemA.id, itemB.id])
+        #expect(try store.readItems()?.items.map(\.id) == [itemA.id, itemB.id])
+    }
+
+    @Test func staleItemResponseAfterResetAndPurgeCannotRestorePreviousAccountCache() async throws {
+        let container = try AccountLocalStore.makeContainer(inMemory: true)
+        let server = URL(string: "https://example.com")!
+        let accountA = UUID()
+        let oldStore = AccountLocalStore(container: container, server: server, accountID: accountA)
+        let remote = CacheTestRemote()
+        let oldRepo = CachedItemRepository(remote: remote, store: oldStore)
+        let viewModel = ItemsListViewModel(repository: oldRepo)
+
+        let staleItem = LifeItem(id: UUID(), title: "Account A Item", status: .active, revision: 1, captureId: UUID())
+        let gate = CacheRequestGate<[LifeItem]>()
+        remote.fetchRequests = [gate]
+
+        let oldLoad = Task { await viewModel.load() }
+        await gate.waitUntilStarted()
+
+        // Simulate logout / reset while the old transport fetch is still in flight.
+        try oldStore.purgeAndInvalidate()
+        viewModel.reset()
+        guard case .idle = viewModel.state else {
+            Issue.record("Expected viewModel to reset to .idle")
+            return
+        }
+
+        gate.resolve(.success([staleItem]))
+        await oldLoad.value
+
+        guard case .idle = viewModel.state else {
+            Issue.record("Stale pre-reset response must not overwrite reset state")
+            return
+        }
+        #expect(viewModel.items.isEmpty)
+
+        let reopenedStore = AccountLocalStore(container: container, server: server, accountID: accountA)
+        #expect(try reopenedStore.readItems() == nil)
+    }
+}
+
+@MainActor
+private final class CacheTestCaptureRepository: CaptureRepository {
+    var captures: [Capture]
+    var deleteFailure: Error?
+
+    init(captures: [Capture], deleteFailure: Error? = nil) {
+        self.captures = captures
+        self.deleteFailure = deleteFailure
+    }
+
+    func fetchCaptures() async throws -> [Capture] { captures }
+    func createCapture(text: String, source: String) async throws -> Capture {
+        Capture(id: UUID(), source: source, rawPayload: text)
+    }
+    func retryCapture(id: UUID) async throws {}
+    func deleteCapture(id: UUID) async throws {
+        if let deleteFailure { throw deleteFailure }
+        captures.removeAll { $0.id == id }
+    }
+}
+
+/// Deliberately ignores task cancellation so tests can deliver stale in-flight responses.
+@MainActor
+private final class CacheRequestGate<Value: Sendable> {
+    private var result: Result<Value, Error>?
+    private var continuation: CheckedContinuation<Value, Error>?
+    private var started = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func value() async throws -> Value {
+        started = true
+        startWaiters.forEach { $0.resume() }
+        startWaiters.removeAll()
+        if let result { return try result.get() }
+        return try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func resolve(_ result: Result<Value, Error>) {
+        self.result = result
+        continuation?.resume(with: result)
+        continuation = nil
+    }
 }
 
 @MainActor
@@ -143,10 +357,13 @@ private final class CacheTestRemote: ItemRepository {
     var updatedItem: LifeItem?
     var createdItem: LifeItem?
     var deletedID: UUID?
+    var itemsToReturn: [LifeItem]?
+    var fetchRequests: [CacheRequestGate<[LifeItem]>] = []
     let item = LifeItem(id: UUID(), title: "Personal item", status: .active, revision: 1)
     func fetchItems() async throws -> [LifeItem] {
+        if !fetchRequests.isEmpty { return try await fetchRequests.removeFirst().value() }
         if let failure { throw failure }
-        return [item]
+        return itemsToReturn ?? [item]
     }
     func createItem(title: String, itemType: String) async throws -> LifeItem {
         if let failure { throw failure }

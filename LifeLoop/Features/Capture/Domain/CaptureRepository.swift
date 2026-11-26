@@ -25,6 +25,8 @@ enum CaptureValidationError: Error, LocalizedError, Equatable {
 protocol CaptureRepository: AnyObject {
     func createCapture(text: String, source: String) async throws -> Capture
     func fetchCaptures() async throws -> [Capture]
+    func retryCapture(id: UUID) async throws
+    func deleteCapture(id: UUID) async throws
 }
 
 extension CaptureRepository {

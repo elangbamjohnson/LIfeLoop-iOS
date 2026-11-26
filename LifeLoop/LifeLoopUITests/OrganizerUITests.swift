@@ -328,6 +328,96 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Captures and incoming items will appear here."].waitForExistence(timeout: 5))
     }
 
+    func testInboxCaptureReviewConfirmEditRetryAndDelete() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+
+        app.buttons["Inbox"].firstMatch.tap()
+
+        let completedCapture = app.descendants(matching: .any)["captureRow-10000000-0000-0000-0000-000000000001"].firstMatch
+        XCTAssertTrue(completedCapture.waitForExistence(timeout: 10))
+
+        let linkedItem = app.descendants(matching: .any)["captureItem-00000000-0000-0000-0000-000000000002"].firstMatch
+        XCTAssertTrue(linkedItem.waitForExistence(timeout: 5))
+
+        let editButton = app.buttons["captureEditItem-00000000-0000-0000-0000-000000000002"].firstMatch
+        XCTAssertTrue(editButton.waitForExistence(timeout: 5))
+        editButton.tap()
+
+        let titleField = app.descendants(matching: .any)["itemTitleField"].firstMatch
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        replaceText(in: titleField, with: "Renew car insurance policy", app: app)
+        let saveEditButton = app.buttons["saveItemEdit"].firstMatch
+        saveEditButton.tap()
+        _ = saveEditButton.waitForNonExistence(timeout: 5)
+
+        let confirmButton = app.buttons["captureConfirmItem-00000000-0000-0000-0000-000000000002"].firstMatch
+        XCTAssertTrue(confirmButton.waitForExistence(timeout: 5))
+        confirmButton.tap()
+        XCTAssertTrue(confirmButton.waitForNonExistence(timeout: 5))
+
+        let failedCapture = app.descendants(matching: .any)["captureRow-10000000-0000-0000-0000-000000000003"].firstMatch
+        if !failedCapture.exists || !failedCapture.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(failedCapture.waitForExistence(timeout: 5))
+        XCTAssertTrue(failedCapture.staticTexts["Saved (AI unavailable)"].waitForExistence(timeout: 5))
+
+        let retryCapture = app.buttons["retryCapture-10000000-0000-0000-0000-000000000003"].firstMatch
+        XCTAssertTrue(retryCapture.waitForExistence(timeout: 5))
+        retryCapture.tap()
+
+        XCTAssertTrue(retryCapture.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(failedCapture.staticTexts["Enriching with AI"].waitForExistence(timeout: 5))
+
+        let deleteCapture = app.buttons["deleteCapture-10000000-0000-0000-0000-000000000003"].firstMatch
+        XCTAssertTrue(deleteCapture.waitForExistence(timeout: 5))
+        deleteCapture.tap()
+
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'permanently removed'")).firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(failedCapture.waitForExistence(timeout: 5))
+
+        deleteCapture.tap()
+        let confirmDelete = app.buttons["confirmDeleteCapture"].firstMatch
+        XCTAssertTrue(confirmDelete.waitForExistence(timeout: 5))
+        confirmDelete.tap()
+
+        XCTAssertTrue(failedCapture.waitForNonExistence(timeout: 5))
+    }
+
+    func testCaptureActionFailurePreservesState() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--fail-capture-action"]
+        app.launch()
+
+        app.buttons["Inbox"].firstMatch.tap()
+
+        let failedCapture = app.descendants(matching: .any)["captureRow-10000000-0000-0000-0000-000000000003"].firstMatch
+        if !failedCapture.exists || !failedCapture.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(failedCapture.waitForExistence(timeout: 10))
+
+        let retryCapture = app.buttons["retryCapture-10000000-0000-0000-0000-000000000003"].firstMatch
+        XCTAssertTrue(retryCapture.waitForExistence(timeout: 5))
+        retryCapture.tap()
+
+        let errorAlert = app.alerts["Action Failed"]
+        XCTAssertTrue(errorAlert.waitForExistence(timeout: 5))
+        errorAlert.buttons["OK"].tap()
+        XCTAssertTrue(retryCapture.exists)
+
+        let deleteCapture = app.buttons["deleteCapture-10000000-0000-0000-0000-000000000003"].firstMatch
+        deleteCapture.tap()
+        app.buttons["confirmDeleteCapture"].firstMatch.tap()
+
+        XCTAssertTrue(errorAlert.waitForExistence(timeout: 5))
+        errorAlert.buttons["OK"].tap()
+        XCTAssertTrue(failedCapture.exists)
+    }
+
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {
         field.tap()
         field.press(forDuration: 1.2)
