@@ -118,19 +118,41 @@ struct CachedItemRepositoryTests {
         let cached = try store.readItems()
         #expect(cached?.items.first?.status == .snoozed)
     }
+
+    @Test func createItemReconcilesCacheAfterRemoteSuccess() async throws {
+        let store = AccountLocalStore(container: try AccountLocalStore.makeContainer(inMemory: true),
+                                      server: URL(string: "https://example.com")!, accountID: UUID())
+        let remote = CacheTestRemote()
+        let repository = CachedItemRepository(remote: remote, store: store)
+
+        let createdItem = LifeItem(id: UUID(), title: "Cached Created Item", status: .active, itemType: "task", revision: 1)
+        remote.createdItem = createdItem
+
+        let result = try await repository.createItem(title: "Cached Created Item", itemType: "task")
+        #expect(result.id == createdItem.id)
+
+        let snapshot = try store.readItems()
+        #expect(snapshot?.items.first?.id == createdItem.id)
+        #expect(snapshot?.items.first?.title == "Cached Created Item")
+    }
 }
 
 @MainActor
 private final class CacheTestRemote: ItemRepository {
     var failure: Error?
     var updatedItem: LifeItem?
+    var createdItem: LifeItem?
     var deletedID: UUID?
     let item = LifeItem(id: UUID(), title: "Personal item", status: .active, revision: 1)
     func fetchItems() async throws -> [LifeItem] {
         if let failure { throw failure }
         return [item]
     }
-    func createItem(title: String, itemType: String) async throws -> LifeItem { throw APIError.forbidden }
+    func createItem(title: String, itemType: String) async throws -> LifeItem {
+        if let failure { throw failure }
+        if let createdItem { return createdItem }
+        return LifeItem(id: UUID(), title: title, status: .active, itemType: itemType, revision: 1)
+    }
     func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem {
         if let failure { throw failure }
         if let updatedItem { return updatedItem }

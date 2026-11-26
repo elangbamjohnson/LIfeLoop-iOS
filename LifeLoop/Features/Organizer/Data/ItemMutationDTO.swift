@@ -3,6 +3,13 @@ import Foundation
 struct CreateItemRequest: Encodable {
     let title: String
     let itemType: String
+    let dueDate: String?
+
+    init(title: String, itemType: String, dueDate: String? = nil) {
+        self.title = title
+        self.itemType = itemType
+        self.dueDate = dueDate
+    }
 }
 
 struct CompleteItemRequest: Encodable {

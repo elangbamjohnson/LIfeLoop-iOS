@@ -14,6 +14,7 @@ struct ItemsListView: View {
   var capabilities: OrganizerCapabilities = .demo
   var onEditItem: ((LifeItem) -> Void)? = nil
   var onSelectItem: ((LifeItem) -> Void)? = nil
+  var onCreateItem: (() -> Void)? = nil
 
   var allowsEditing: Bool {
     get { capabilities.allowsItemMutations }
@@ -71,10 +72,7 @@ struct ItemsListView: View {
     .overlay(alignment: .bottomTrailing) {
       if capabilities.allowsItemCreation {
         Button {
-          if let onEditItem {
-            let newItem = LifeItem(id: UUID(), title: "", status: .active)
-            onEditItem(newItem)
-          }
+          onCreateItem?()
         } label: {
           Image(systemName: "plus")
             .font(.system(size: 20, weight: .bold))

@@ -83,6 +83,20 @@ final class AccountLocalStore {
         }
     }
 
+    func insertItem(_ newItem: LifeItem) throws {
+        guard let snapshot = try readItems() else {
+            try saveItems([newItem])
+            return
+        }
+        var items = snapshot.items
+        if let index = items.firstIndex(where: { $0.id == newItem.id }) {
+            items[index] = newItem
+        } else {
+            items.insert(newItem, at: 0)
+        }
+        try write(items, name: "items")
+    }
+
     func deleteItem(id: UUID) throws {
         guard let snapshot = try readItems() else { return }
         var items = snapshot.items

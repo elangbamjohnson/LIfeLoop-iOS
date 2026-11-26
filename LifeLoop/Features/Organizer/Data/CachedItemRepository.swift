@@ -32,7 +32,13 @@ final class CachedItemRepository: ItemRepository {
     }
 
     func createItem(title: String, itemType: String) async throws -> LifeItem {
-        try await remote.createItem(title: title, itemType: itemType)
+        try await createItem(title: title, itemType: itemType, dueDate: nil)
+    }
+
+    func createItem(title: String, itemType: String, dueDate: Date?) async throws -> LifeItem {
+        let created = try await remote.createItem(title: title, itemType: itemType, dueDate: dueDate)
+        try? store.insertItem(created)
+        return created
     }
     func updateItem(id: UUID, title: String, expectedRevision: Int) async throws -> LifeItem {
         let updated = try await remote.updateItem(id: id, title: title, expectedRevision: expectedRevision)
