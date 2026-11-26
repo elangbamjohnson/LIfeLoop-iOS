@@ -205,10 +205,23 @@ final class OrganizerUITests: XCTestCase {
         saveButton.tap()
 
         // Wait for sheet dismissal
-        _ = saveButton.waitForNonExistence(timeout: 5)
+        XCTAssertTrue(saveButton.waitForNonExistence(timeout: 8))
 
-        // Verify newly created item is rendered
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Buy Organic Milk'")).firstMatch.waitForExistence(timeout: 5))
+        // Verify newly created item is rendered (scroll Priority list if LazyVStack places UPCOMING below the fold)
+        let createdItem = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Buy Organic Milk'")).firstMatch
+        if !createdItem.waitForExistence(timeout: 5) {
+            let list = app.scrollViews["priorityScrollView"]
+            var attempts = 0
+            while !createdItem.exists && attempts < 4 {
+                if list.exists {
+                    list.swipeUp()
+                } else {
+                    app.swipeUp()
+                }
+                attempts += 1
+            }
+        }
+        XCTAssertTrue(createdItem.waitForExistence(timeout: 5))
     }
 
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {
