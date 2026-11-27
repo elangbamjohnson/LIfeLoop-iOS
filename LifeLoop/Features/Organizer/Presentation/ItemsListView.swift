@@ -607,67 +607,46 @@ struct ItemsListView: View {
   }
 
   private func priorityRow(for item: LifeItem) -> some View {
-    let leading = leadingActions(for: item)
-    let trailing = trailingActions(for: item)
-    return PrioritySwipeRow(
-      leadingActions: leading,
-      trailingActions: trailing,
-      isExpanded: expandedIDs.contains(item.id)
-    ) {
-      card(for: item)
-        .overlay {
-          RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color.accentColor.opacity(selectedItemID == item.id ? 0.08 : 0))
-            .allowsHitTesting(false)
-        }
-        .overlay {
-          RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .stroke(Color.accentColor.opacity(selectedItemID == item.id ? 0.6 : 0), lineWidth: 2)
-            .allowsHitTesting(false)
-        }
-        .accessibilityAddTraits(selectedItemID == item.id ? .isSelected : [])
-        .accessibilityActions {
-          ForEach(leading + trailing) { action in
-            Button(action.title, action: action.perform)
+    card(for: item)
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .fill(Color.accentColor.opacity(selectedItemID == item.id ? 0.08 : 0))
+          .allowsHitTesting(false)
+      }
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .stroke(Color.accentColor.opacity(selectedItemID == item.id ? 0.6 : 0), lineWidth: 2)
+          .allowsHitTesting(false)
+      }
+      .accessibilityAddTraits(selectedItemID == item.id ? .isSelected : [])
+      .accessibilityActions {
+        if capabilities.allowsItemMutations {
+          if item.status == .pendingReview {
+            Button("Confirm") {
+              Task { await viewModel.confirmReview(item) }
+            }
+          }
+          if item.status == .completed {
+            Button("Reopen") {
+              Task { await viewModel.reopenItem(item) }
+            }
+          } else {
+            Button("Complete") {
+              Task { await viewModel.completeItem(item) }
+            }
+          }
+          Button("Snooze") {
+            itemToSnooze = item
+            showSnoozeDialog = true
+          }
+          Button("Delete") {
+            itemToDelete = item
+            showDeleteConfirmation = true
           }
         }
-    }
-    .id(item.id)
-    .tag(item.id)
-  }
-
-  private func leadingActions(for item: LifeItem) -> [PrioritySwipeAction] {
-    guard capabilities.allowsItemMutations else { return [] }
-    var actions: [PrioritySwipeAction] = []
-    if item.status == .pendingReview {
-      actions.append(PrioritySwipeAction(title: "Confirm", icon: "sparkles", tint: .orange) {
-        Task { await viewModel.confirmReview(item) }
-      })
-    }
-    if item.status == .completed {
-      actions.append(PrioritySwipeAction(title: "Reopen", icon: "arrow.uturn.backward", tint: .blue) {
-        Task { await viewModel.reopenItem(item) }
-      })
-    } else {
-      actions.append(PrioritySwipeAction(title: "Complete", icon: "checkmark", tint: .green) {
-        Task { await viewModel.completeItem(item) }
-      })
-    }
-    return actions
-  }
-
-  private func trailingActions(for item: LifeItem) -> [PrioritySwipeAction] {
-    guard capabilities.allowsItemMutations else { return [] }
-    return [
-      PrioritySwipeAction(title: "Delete", icon: "trash", tint: .red) {
-        itemToDelete = item
-        showDeleteConfirmation = true
-      },
-      PrioritySwipeAction(title: "Snooze", icon: "clock.arrow.circlepath", tint: .orange) {
-        itemToSnooze = item
-        showSnoozeDialog = true
       }
-    ]
+      .id(item.id)
+      .tag(item.id)
   }
 
   @ViewBuilder
