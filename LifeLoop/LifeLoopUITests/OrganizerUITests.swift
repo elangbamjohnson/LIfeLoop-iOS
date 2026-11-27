@@ -143,7 +143,7 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertTrue(followUpBtn.waitForExistence(timeout: 3))
     }
 
-    func testPriorityExpansionSurvivesScrollingAndSwipesExposeActions() {
+    func testPriorityExpansionSurvivesScrollingAndSwipesDoNotMutateOrNavigate() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
         app.launch()
@@ -160,17 +160,15 @@ final class OrganizerUITests: XCTestCase {
         chevron.tap()
         XCTAssertEqual(chevron.label, "Expand item")
 
-        // 1. Horizontal swipe left exposes actions and does not open detail page
+        // Horizontal swipes and resting card taps do not expose swipe actions or navigate
         row.swipeLeft()
         XCTAssertFalse(app.buttons["editItem"].exists, "Swipe left should not open detail page")
-        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Delete"].exists, "Priority cards should not expose swipe Delete action")
 
-        // 2. Tapping the swiped card closes the actions and does not open detail page
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
-        XCTAssertFalse(app.buttons["editItem"].exists, "Tapping card should not open detail page")
-        _ = app.buttons["Delete"].waitForNonExistence(timeout: 3)
+        row.swipeRight()
+        XCTAssertFalse(app.buttons["editItem"].exists, "Swipe right should not open detail page")
+        XCTAssertFalse(app.buttons["Complete"].exists, "Priority cards should not expose swipe Complete action")
 
-        // 3. Tapping the resting card does not open detail page
         row.tap()
         XCTAssertFalse(app.buttons["editItem"].exists, "Tapping card should not open detail page")
     }
