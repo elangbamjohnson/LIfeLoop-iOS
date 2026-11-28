@@ -1,3 +1,10 @@
+//
+//  AppConfiguration.swift
+//  LifeLoop
+//
+//  Created by Johnson Elangbam on 16/11/26.
+//
+
 import Foundation
 
 /// Environment selection is independent of signing. No credentials belong here.

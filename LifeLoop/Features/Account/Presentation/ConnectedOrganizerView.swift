@@ -1,3 +1,10 @@
+//
+//  ConnectedOrganizerView.swift
+//  LifeLoop
+//
+//  Created by Johnson Elangbam on 17/11/26.
+//
+
 import SwiftUI
 import SwiftData
 

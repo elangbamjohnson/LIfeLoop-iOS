@@ -1,3 +1,10 @@
+//
+//  CaptureViewModel.swift
+//  LifeLoop
+//
+//  Created by Johnson Elangbam on 25/11/26.
+//
+
 import Foundation
 import Observation
 
