@@ -213,15 +213,101 @@ extension LifeItem {
     }
 
     var isOverdue: Bool {
-        guard status != .pendingReview, let target = TimelineGrouping.targetDate(for: self) else {
+        isOverdue(relativeTo: Date())
+    }
+
+    var isWaitingFor: Bool {
+        let normalizedType = itemType.lowercased()
+        return normalizedType == "waiting_for"
+            || normalizedType == "waitingfor"
+            || waitingForPerson != nil
+            || metadata["isWaitingFor"] == .bool(true)
+    }
+
+    func isOverdue(relativeTo referenceDate: Date, calendar: Calendar = .current) -> Bool {
+        guard status != .pendingReview, status != .completed, let target = TimelineGrouping.targetDate(for: self) else {
             return false
         }
-        let calendar = Calendar.current
-        let ref = Date()
-        let startOfRef = calendar.startOfDay(for: ref)
+        let startOfRef = calendar.startOfDay(for: referenceDate)
         let startOfTarget = calendar.startOfDay(for: target)
         let days = calendar.dateComponents([.day], from: startOfRef, to: startOfTarget).day ?? 0
-        return days < 0 || (days == 0 && target <= ref)
+        return days < 0 || (days == 0 && target <= referenceDate)
+    }
+
+    struct WaitingForSummary: Equatable {
+        let text: String
+        let isOverdue: Bool
+    }
+
+    /// Produces web-parity Waiting For status prose (Received / Expected / Overdue by Nd).
+    func waitingForStatusSummary(
+        relativeTo referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> WaitingForSummary? {
+        guard isWaitingFor, status != .pendingReview else { return nil }
+
+        if status == .completed {
+            if let date = completedDisplayDate {
+                return WaitingForSummary(text: "Received \(date.formatted(date: .numeric, time: .omitted))", isOverdue: false)
+            }
+            return WaitingForSummary(text: "Received", isOverdue: false)
+        }
+
+        guard let target = TimelineGrouping.targetDate(for: self) else {
+            return WaitingForSummary(text: "Expected Soon", isOverdue: false)
+        }
+
+        let startOfRef = calendar.startOfDay(for: referenceDate)
+        let startOfTarget = calendar.startOfDay(for: target)
+        let days = calendar.dateComponents([.day], from: startOfRef, to: startOfTarget).day ?? 0
+
+        if days < 0 || (days == 0 && target <= referenceDate) {
+            let overdueDays = max(1, abs(days))
+            let unit = overdueDays == 1 ? "day" : "days"
+            let person = waitingForPerson ?? "Someone"
+            return WaitingForSummary(
+                text: "\(person)'s \(title.lowercased()) is overdue by \(overdueDays) \(unit).",
+                isOverdue: true
+            )
+        }
+
+        return WaitingForSummary(
+            text: "Expected \(target.formatted(.dateTime.month(.abbreviated).day()))",
+            isOverdue: false
+        )
+    }
+
+    private var completedDisplayDate: Date? {
+        if case .string(let raw) = metadata["completedAt"], let date = Self.parseDate(raw) {
+            return date
+        }
+        if let updatedAt, let date = Self.parseDate(updatedAt) {
+            return date
+        }
+        return nil
+    }
+
+    /// Filters items matching search query across title, type, formatted amount, and metadata values.
+    static func filter(_ items: [LifeItem], matching rawQuery: String) -> [LifeItem] {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return items }
+        let normalized = trimmed.lowercased()
+        return items.filter { $0.matchesSearchTerm(normalized) }
+    }
+
+    func matchesSearchQuery(_ rawQuery: String) -> Bool {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        return matchesSearchTerm(trimmed.lowercased())
+    }
+
+    private func matchesSearchTerm(_ lowercasedQuery: String) -> Bool {
+        if title.lowercased().contains(lowercasedQuery) { return true }
+        let normalizedType = itemType.lowercased()
+        if normalizedType.contains(lowercasedQuery) { return true }
+        if normalizedType.replacingOccurrences(of: "_", with: " ").contains(lowercasedQuery) { return true }
+        if let amountFormatted, amountFormatted.lowercased().contains(lowercasedQuery) { return true }
+        return metadata.values.contains { $0.containsSearchTerm(lowercasedQuery) }
     }
 
     var hasStructuredFields: Bool {

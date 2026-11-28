@@ -49,11 +49,7 @@ struct TimelineGrouping: Equatable {
             }
 
             // 2. Waiting-For items
-            let isWaitingFor = item.itemType.lowercased() == "waiting_for"
-                || item.itemType.lowercased() == "waitingfor"
-                || item.waitingForPerson != nil
-                || item.metadata["isWaitingFor"] == .bool(true)
-            if isWaitingFor && item.status != .pendingReview {
+            if item.isWaitingFor && item.status != .pendingReview {
                 result.waitingFor.push(item)
                 continue
             }
