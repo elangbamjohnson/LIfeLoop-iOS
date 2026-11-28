@@ -1,3 +1,10 @@
+//
+//  GoogleIdentityProvider.swift
+//  LifeLoop
+//
+//  Created by Johnson Elangbam on 17/11/26.
+//
+
 import Foundation
 
 /// Google proves identity; the LifeLoop backend decides which account/session to create.
