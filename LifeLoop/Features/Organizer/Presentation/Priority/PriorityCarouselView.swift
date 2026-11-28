@@ -11,6 +11,7 @@ struct PriorityCarouselView: View {
     let items: [LifeItem]
     let mutatingItemIDs: Set<UUID>
     let capabilities: OrganizerCapabilities
+    var referenceDate: Date = Date()
     var onComplete: (LifeItem) -> Void
     var onSnooze: (LifeItem) -> Void
     var onEdit: (LifeItem) -> Void
@@ -30,21 +31,37 @@ struct PriorityCarouselView: View {
             }
             .padding(.horizontal, 4)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 12) {
-                    ForEach(items) { item in
-                        PriorityCarouselCard(
-                            item: item,
-                            isMutating: mutatingItemIDs.contains(item.id),
-                            onComplete: { onComplete(item) },
-                            onSnooze: { onSnooze(item) },
-                            onEdit: { onEdit(item) },
-                            onConfirmReview: onConfirmReview != nil ? { onConfirmReview?(item) } : nil
-                        )
-                    }
-                }
+            if items.count == 1, let singleItem = items.first {
+                PriorityCarouselCard(
+                    item: singleItem,
+                    referenceDate: referenceDate,
+                    fillsAvailableWidth: true,
+                    isMutating: mutatingItemIDs.contains(singleItem.id),
+                    onComplete: { onComplete(singleItem) },
+                    onSnooze: { onSnooze(singleItem) },
+                    onEdit: { onEdit(singleItem) },
+                    onConfirmReview: onConfirmReview != nil ? { onConfirmReview?(singleItem) } : nil
+                )
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(items) { item in
+                            PriorityCarouselCard(
+                                item: item,
+                                referenceDate: referenceDate,
+                                isMutating: mutatingItemIDs.contains(item.id),
+                                onComplete: { onComplete(item) },
+                                onSnooze: { onSnooze(item) },
+                                onEdit: { onEdit(item) },
+                                onConfirmReview: onConfirmReview != nil ? { onConfirmReview?(item) } : nil
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                }
             }
         }
         .padding(.vertical, 6)

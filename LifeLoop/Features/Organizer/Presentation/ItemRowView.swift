@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ItemRowView: View {
     let item: LifeItem
+    var referenceDate: Date = Date()
     var expanded: Bool? = nil
     var onToggleExpand: (() -> Void)? = nil
     var isMutating: Bool = false
@@ -27,11 +28,15 @@ struct ItemRowView: View {
     }
 
     private var badgeInfo: ItemBadgeInfo? {
-        ItemBadgeInfo.badge(for: item)
+        ItemBadgeInfo.badge(for: item, referenceDate: referenceDate)
     }
 
     private var waitingForPerson: String? {
         item.waitingForPerson
+    }
+
+    private var waitingForSummary: LifeItem.WaitingForSummary? {
+        item.waitingForStatusSummary(relativeTo: referenceDate)
     }
 
     var body: some View {
@@ -95,12 +100,22 @@ struct ItemRowView: View {
                 Spacer(minLength: 0)
             }
 
-            // Subtitle if waiting for someone
-            if let person = waitingForPerson {
-                Text("Waiting for: \(person)")
-                    .font(.caption)
-                    .foregroundStyle(.purple)
-                    .padding(.leading, 38)
+            // Subtitle / Waiting For status summary (Web Parity)
+            if waitingForPerson != nil || waitingForSummary != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let person = waitingForPerson {
+                        Text("Waiting for: \(person)")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                    }
+                    if let summary = waitingForSummary {
+                        Text(summary.text)
+                            .font(.caption)
+                            .fontWeight(summary.isOverdue ? .medium : .regular)
+                            .foregroundStyle(summary.isOverdue ? .orange : .secondary)
+                    }
+                }
+                .padding(.leading, 38)
             }
 
             // 3. Expandable Complete Information Container (Web Parity)
@@ -138,7 +153,7 @@ struct ItemRowView: View {
                                         .foregroundStyle(.secondary)
                                     Text(deadline)
                                         .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(item.isOverdue ? .red : .primary)
+                                        .foregroundStyle(item.isOverdue(relativeTo: referenceDate) ? .red : .primary)
                                 }
                             }
 
@@ -232,7 +247,7 @@ struct ItemRowView: View {
                     }
 
                     // Waiting For Specialized Action Bar (Web App Parity: Received, Remind me later, Follow up)
-                    if item.itemType == "waiting_for" && item.status != .completed {
+                    if item.isWaitingFor && item.status != .completed && item.status != .pendingReview {
                         HStack(spacing: 8) {
                             if let onToggleComplete {
                                 Button {

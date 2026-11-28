@@ -30,4 +30,21 @@ indirect enum JSONValue: Codable, Equatable {
         case .null: try value.encodeNil()
         }
     }
+
+    /// Recursively checks leaf scalar values for a lowercased search term,
+    /// avoiding internal keys or booleans that cause noisy false positives.
+    func containsSearchTerm(_ lowercasedQuery: String) -> Bool {
+        switch self {
+        case .string(let string):
+            return string.lowercased().contains(lowercasedQuery)
+        case .number(let number):
+            return NSDecimalNumber(decimal: number).stringValue.lowercased().contains(lowercasedQuery)
+        case .array(let array):
+            return array.contains { $0.containsSearchTerm(lowercasedQuery) }
+        case .object(let object):
+            return object.values.contains { $0.containsSearchTerm(lowercasedQuery) }
+        case .bool, .null:
+            return false
+        }
+    }
 }

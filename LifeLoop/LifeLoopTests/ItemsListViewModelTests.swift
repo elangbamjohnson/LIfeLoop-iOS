@@ -460,6 +460,47 @@ struct ItemsListViewModelTests {
         #expect(viewModel.items == [itemA, itemB])
     }
 
+    @Test func foregroundClockUpdatesReferenceDateAndStopsOnBackgroundOrReset() async {
+        var currentNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let gates: [ClockGate] = [ClockGate(), ClockGate()]
+        var gateIndex = 0
+        let repository = StubItemRepository(result: .success([]))
+        let viewModel = ItemsListViewModel(
+            repository: repository,
+            nowProvider: { currentNow },
+            waitForNextClockTick: {
+                let idx = gateIndex
+                gateIndex += 1
+                if idx < gates.count {
+                    try await gates[idx].wait()
+                } else {
+                    try await Task.sleep(for: .seconds(60))
+                }
+            }
+        )
+
+        #expect(viewModel.referenceDate == currentNow)
+
+        currentNow = currentNow.addingTimeInterval(45)
+        viewModel.setForegroundActive(true)
+        #expect(viewModel.referenceDate == currentNow)
+
+        await gates[0].waitUntilWaiting()
+        currentNow = currentNow.addingTimeInterval(30)
+        gates[0].resume()
+        await gates[1].waitUntilWaiting()
+        #expect(viewModel.referenceDate == currentNow)
+
+        // Going inactive cancels ticks cleanly; further time advance only applies via manual refresh or foreground return.
+        viewModel.setForegroundActive(false)
+        currentNow = currentNow.addingTimeInterval(120)
+        viewModel.refreshReferenceDate()
+        #expect(viewModel.referenceDate == currentNow)
+
+        viewModel.reset()
+        #expect(viewModel.referenceDate == currentNow)
+    }
+
     private func makeItem(revision: Int? = 1) -> LifeItem {
         LifeItem(
             id: UUID(),
@@ -525,4 +566,43 @@ private final class StubItemRepository: ItemRepository {
 
 private enum StubError: Error {
     case unavailable
+}
+
+@MainActor
+private final class ClockGate {
+    private var waiting = false
+    private var waitStartContinuations: [CheckedContinuation<Void, Never>] = []
+    private var tickContinuation: CheckedContinuation<Void, Error>?
+
+    func wait() async throws {
+        waiting = true
+        waitStartContinuations.forEach { $0.resume() }
+        waitStartContinuations.removeAll()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    tickContinuation = continuation
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                let cont = self.tickContinuation
+                self.tickContinuation = nil
+                cont?.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    func waitUntilWaiting() async {
+        if waiting { return }
+        await withCheckedContinuation { waitStartContinuations.append($0) }
+    }
+
+    func resume() {
+        let cont = tickContinuation
+        tickContinuation = nil
+        cont?.resume()
+    }
 }

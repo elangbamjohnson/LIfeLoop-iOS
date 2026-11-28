@@ -25,14 +25,70 @@ final class ItemsListViewModel {
     private(set) var requiresSignIn = false
     private(set) var refreshError: String?
     private(set) var mutatingItemIDs: Set<UUID> = []
+    private(set) var referenceDate: Date
     var actionError: String?
 
     private let repository: any ItemRepository
+    private let nowProvider: () -> Date
+    private let waitForNextClockTick: () async throws -> Void
     private var loadGeneration = 0
     private var deletedCaptureIDs: Set<UUID> = []
+    private var isForegroundActive = false
+    private var clockTask: Task<Void, Never>?
+    private var clockID: UUID?
 
-    init(repository: any ItemRepository) {
+    init(
+        repository: any ItemRepository,
+        nowProvider: @escaping () -> Date = Date.init,
+        waitForNextClockTick: @escaping () async throws -> Void = {
+            try await Task.sleep(for: .seconds(30))
+        }
+    ) {
         self.repository = repository
+        self.nowProvider = nowProvider
+        self.waitForNextClockTick = waitForNextClockTick
+        self.referenceDate = nowProvider()
+    }
+
+    func setForegroundActive(_ active: Bool) {
+        guard isForegroundActive != active else { return }
+        isForegroundActive = active
+        if active {
+            referenceDate = nowProvider()
+            startClockIfNeeded()
+        } else {
+            stopClock()
+        }
+    }
+
+    func refreshReferenceDate() {
+        referenceDate = nowProvider()
+    }
+
+    private func startClockIfNeeded() {
+        guard isForegroundActive, clockTask == nil, !Task.isCancelled else { return }
+        let operationID = UUID()
+        let wait = waitForNextClockTick
+        clockID = operationID
+        clockTask = Task { [weak self] in
+            defer {
+                if self?.clockID == operationID {
+                    self?.clockID = nil
+                    self?.clockTask = nil
+                }
+            }
+            while !Task.isCancelled {
+                do { try await wait() } catch { break }
+                guard let self, self.clockID == operationID, self.isForegroundActive, !Task.isCancelled else { break }
+                self.referenceDate = self.nowProvider()
+            }
+        }
+    }
+
+    private func stopClock() {
+        clockTask?.cancel()
+        clockTask = nil
+        clockID = nil
     }
 
     func load(preservingContent: Bool = false) async {
@@ -227,6 +283,8 @@ final class ItemsListViewModel {
 
     func reset() {
         loadGeneration += 1
+        isForegroundActive = false
+        stopClock()
         deletedCaptureIDs.removeAll()
         state = .idle
         lastLoadedAt = nil

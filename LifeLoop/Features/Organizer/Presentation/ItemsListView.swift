@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 struct ItemsListView: View {
   let viewModel: ItemsListViewModel
@@ -120,7 +121,14 @@ struct ItemsListView: View {
       if retryCount == 0 { await viewModel.loadIfNeeded() } else { await viewModel.forceLoad() }
     }
     .onChange(of: scenePhase) { _, newPhase in
-      if newPhase == .active && viewModel.isStale { retryCount += 1 }
+      viewModel.setForegroundActive(newPhase == .active)
+      if newPhase == .active {
+        viewModel.refreshReferenceDate()
+        if viewModel.isStale { retryCount += 1 }
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+      viewModel.refreshReferenceDate()
     }
   }
 
@@ -128,7 +136,7 @@ struct ItemsListView: View {
 
   @ViewBuilder
   private func listContent(for items: [LifeItem]) -> some View {
-    let grouping = TimelineGrouping.group(items: items)
+    let grouping = TimelineGrouping.group(items: items, referenceDate: viewModel.referenceDate)
 
     switch tab {
     case .priority:
@@ -143,8 +151,9 @@ struct ItemsListView: View {
   @ViewBuilder
   private func priorityList(grouping: TimelineGrouping) -> some View {
     let priority = PriorityGrouping(from: grouping)
+    let hasAnyCaptures = !(captureViewModel?.captures.isEmpty ?? true)
 
-    if priority.isEmpty {
+    if priority.isEmpty && grouping.past.isEmpty && !hasAnyCaptures {
       ContentUnavailableView(
         "Your LifeLoop is peaceful and clear.",
         systemImage: "sparkles",
@@ -159,6 +168,7 @@ struct ItemsListView: View {
                 items: priority.carouselItems,
                 mutatingItemIDs: viewModel.mutatingItemIDs,
                 capabilities: capabilities,
+                referenceDate: viewModel.referenceDate,
                 onComplete: { item in
                   Task { await viewModel.completeItem(item) }
                 },
@@ -653,6 +663,7 @@ struct ItemsListView: View {
   private func card(for item: LifeItem) -> some View {
     let cardView = ItemRowView(
       item: item,
+      referenceDate: viewModel.referenceDate,
       expanded: tab == .priority ? expandedIDs.contains(item.id) : nil,
       onToggleExpand: tab == .priority ? {
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
@@ -766,14 +777,7 @@ struct ItemsListView: View {
   }
 
   private func filterItems(_ items: [LifeItem]) -> [LifeItem] {
-    guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else {
-      return items
-    }
-    let query = searchText.lowercased()
-    return items.filter { item in
-      item.title.lowercased().contains(query)
-        || item.itemType.lowercased().contains(query)
-    }
+    LifeItem.filter(items, matching: searchText)
   }
 }
 

@@ -9,6 +9,8 @@ import SwiftUI
 
 struct PriorityCarouselCard: View {
     let item: LifeItem
+    var referenceDate: Date = Date()
+    var fillsAvailableWidth: Bool = false
     var isMutating: Bool = false
     var onComplete: () -> Void
     var onSnooze: () -> Void
@@ -20,7 +22,7 @@ struct PriorityCarouselCard: View {
             return ("NEEDS REVIEW", .orange, Color.orange.opacity(0.12))
         }
         let calendar = Calendar.current
-        let ref = Date()
+        let ref = referenceDate
         if let target = TimelineGrouping.targetDate(for: item) {
             let startOfRef = calendar.startOfDay(for: ref)
             let startOfTarget = calendar.startOfDay(for: target)
@@ -143,7 +145,8 @@ struct PriorityCarouselCard: View {
             }
         }
         .padding(12)
-        .frame(width: 270, height: 135)
+        .frame(maxWidth: fillsAvailableWidth ? .infinity : 270, minHeight: 135, alignment: .topLeading)
+        .frame(width: fillsAvailableWidth ? nil : 270, height: fillsAvailableWidth ? nil : 135)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(

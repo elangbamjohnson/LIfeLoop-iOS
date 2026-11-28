@@ -119,6 +119,7 @@ struct RootView: View {
                 try? localStore?.deleteItems(forCaptureID: captureID)
             }
             captureViewModel.onSessionExpired = onSessionExpired
+            viewModel.setForegroundActive(scenePhase == .active)
             captureViewModel.setForegroundActive(scenePhase == .active)
             guard scenePhase == .active else { return }
             await captureViewModel.loadCaptures()
@@ -131,9 +132,13 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // Invalidate immediately, before a suspended refresh can resume.
+            viewModel.setForegroundActive(phase == .active)
             captureViewModel.setForegroundActive(phase == .active)
         }
-        .onDisappear { captureViewModel.setForegroundActive(false) }
+        .onDisappear {
+            viewModel.setForegroundActive(false)
+            captureViewModel.setForegroundActive(false)
+        }
         .onChange(of: viewModel.requiresSignIn) { _, expired in
             if expired {
                 captureViewModel.reset()

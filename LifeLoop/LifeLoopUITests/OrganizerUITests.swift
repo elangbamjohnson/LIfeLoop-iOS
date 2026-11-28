@@ -416,6 +416,24 @@ final class OrganizerUITests: XCTestCase {
         XCTAssertTrue(failedCapture.exists)
     }
 
+    func testPriorityWaitingForSummaryAndMetadataSearch() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+
+        let searchField = app.searchFields.firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        searchField.tap()
+        searchField.typeText("DHL")
+
+        let waitingItem = app.descendants(matching: .any)["item-00000000-0000-0000-0000-000000000007"].firstMatch
+        XCTAssertTrue(waitingItem.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)[firstID].exists)
+
+        XCTAssertTrue(app.staticTexts["Waiting for: DHL Express"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Expected '")).firstMatch.waitForExistence(timeout: 5))
+    }
+
     private func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication) {
         field.tap()
         field.press(forDuration: 1.2)
